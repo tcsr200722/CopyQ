@@ -1,21 +1,4 @@
-/*
-    Copyright (c) 2020, Lukas Holecek <hluk@email.cz>
-
-    This file is part of CopyQ.
-
-    CopyQ is free software: you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation, either version 3 of the License, or
-    (at your option) any later version.
-
-    CopyQ is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
-
-    You should have received a copy of the GNU General Public License
-    along with CopyQ.  If not, see <http://www.gnu.org/licenses/>.
-*/
+// SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "textdata.h"
 
@@ -23,19 +6,28 @@
 
 #include <QLocale>
 #include <QString>
-#include <Qt>
+#include <QVariantMap>
 
 #include <algorithm>
 #include <iterator>
 
 namespace {
 
+const QLatin1String mimePluginPrefix(COPYQ_MIME_PREFIX "item");
+
 QString escapeHtmlSpaces(const QString &str)
 {
-    QString str2 = str;
-    return str2
-            .replace(' ', "&nbsp;")
-            .replace('\n', "<br />");
+    return QString(str)
+            .replace(' ', QLatin1String("&nbsp;"))
+            .replace('\n', QLatin1String("<br />"));
+}
+
+bool isPluginFormat(const QString &mime)
+{
+    return mime.startsWith(mimePrivatePrefix) || (
+        mime.startsWith(mimePluginPrefix)
+        && mime.size() > mimePluginPrefix.size()
+    );
 }
 
 } // namespace
@@ -43,7 +35,11 @@ QString escapeHtmlSpaces(const QString &str)
 uint hash(const QVariantMap &data)
 {
     uint seed = 0;
+#if QT_VERSION >= QT_VERSION_CHECK(6,10,0)
+    QtPrivate::QHashCombine hash(seed);
+#else
     QtPrivate::QHashCombine hash;
+#endif
 
     for (auto it = data.constBegin(); it != data.constEnd(); ++it) {
         const auto &mime = it.key();
@@ -52,8 +48,16 @@ uint hash(const QVariantMap &data)
         if (mime == mimeWindowTitle || mime == mimeOwner || mime == mimeClipboardMode)
             continue;
 
+        if ( isPluginFormat(mime) )
+            continue;
+
         seed = hash(seed, mime);
-        seed = hash(seed, data[mime].toByteArray());
+
+        const auto &value = it.value();
+        if ( value.typeId() == QMetaType::QByteArray )
+            seed = hash(seed, value.toByteArray());
+        else
+            seed = hash(seed, value.toString());
     }
 
     return seed;
@@ -77,6 +81,9 @@ QString getTextData(const QByteArray &bytes)
 
 QString getTextData(const QVariantMap &data, const QString &mime)
 {
+    if (mime.isEmpty())
+        return getTextData(data);
+
     const auto it = data.find(mime);
     if ( it != data.constEnd() )
         return getTextData( it->toByteArray() );

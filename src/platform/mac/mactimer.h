@@ -1,33 +1,13 @@
-/*
-    Copyright (c) 2020, Lukas Holecek <hluk@email.cz>
+// SPDX-License-Identifier: GPL-3.0-or-later
 
-    This file is part of CopyQ.
+#pragma once
 
-    CopyQ is free software: you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation, either version 3 of the License, or
-    (at your option) any later version.
 
-    CopyQ is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
-
-    You should have received a copy of the GNU General Public License
-    along with CopyQ.  If not, see <http://www.gnu.org/licenses/>.
-*/
-
-#ifndef MACTIMER_H
-#define MACTIMER_H
+#include "cfref.h"
 
 #include <QObject>
 
-#ifdef __OBJC__
-@class NSTimer;
-#else
-using NSTimer = void;
-#endif
-
+#include <CoreFoundation/CoreFoundation.h>
 /**
  * Class similar to a QTimer but allows setting a tolerance, which
  * makes timers more battery-friendly on OSX.
@@ -45,9 +25,8 @@ public:
     inline void setSingleShot(bool singleShot);
 
     /**
-     * Set the tolerance for the timer. See NSTimer::setTolerance.
-     *
-     * Tolerance is ignored on OS X < 10.9.
+     * Set the tolerance for the timer.
+     * See CFRunLoopTimerSetTolerance.
      */
     void setTolerance(int msec);
     int tolerance() const { return m_tolerance; }
@@ -69,7 +48,5 @@ private:
     int m_tolerance;
     bool m_singleShot;
 
-    NSTimer *m_nsTimer;
+    CFRef<CFRunLoopTimerRef> m_cfTimer;
 };
-
-#endif // MACTIMER_H

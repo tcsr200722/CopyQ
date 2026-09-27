@@ -1,21 +1,4 @@
-/*
-    Copyright (c) 2020, Lukas Holecek <hluk@email.cz>
-
-    This file is part of CopyQ.
-
-    CopyQ is free software: you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation, either version 3 of the License, or
-    (at your option) any later version.
-
-    CopyQ is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
-
-    You should have received a copy of the GNU General Public License
-    along with CopyQ.  If not, see <http://www.gnu.org/licenses/>.
-*/
+// SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "gui/notificationbasic.h"
 #include "gui/notification.h"
@@ -25,7 +8,7 @@
 #include "common/textdata.h"
 #include "common/timer.h"
 #include "gui/iconfactory.h"
-#include "gui/icons.h"
+#include "gui/fromiconid.h"
 #include "gui/pixelratio.h"
 
 #include <QApplication>
@@ -77,7 +60,7 @@ class NotificationBasicWidget final : public QWidget
     Q_OBJECT
 
 public:
-    NotificationBasicWidget(NotificationBasic *parent);
+    explicit NotificationBasicWidget(NotificationBasic *parent);
 
     void setTitle(const QString &title);
     void setMessage(const QString &msg, Qt::TextFormat format = Qt::AutoText);
@@ -93,11 +76,7 @@ public:
     void adjust();
 
     void mousePressEvent(QMouseEvent *event) override;
-#if QT_VERSION >= QT_VERSION_CHECK(6,0,0)
     void enterEvent(QEnterEvent *event) override;
-#else
-    void enterEvent(QEvent *event) override;
-#endif
     void leaveEvent(QEvent *event) override;
     void paintEvent(QPaintEvent *event) override;
     void showEvent(QShowEvent *event) override;
@@ -126,7 +105,7 @@ class NotificationBasic final : public Notification
     friend class NotificationBasicWidget;
 
 public:
-    NotificationBasic(QObject *parent)
+    explicit NotificationBasic(QObject *parent)
         : Notification(parent)
         , m_widget(this)
     {
@@ -157,6 +136,9 @@ public:
     void setButtons(const NotificationButtons &buttons) override {
         m_widget.setButtons(buttons);
     }
+
+    void setUrgency(Urgency) override { /* Basic notification: urgency levels not supported */ }
+    void setPersistency(Persistency) override { /* Basic notification: persistency not supported */ }
 
     void adjust() override {
         m_widget.updateIcon();
@@ -247,7 +229,7 @@ void NotificationBasicWidget::setIcon(const QString &icon)
 
 void NotificationBasicWidget::setIcon(ushort icon)
 {
-    m_icon = QString(QChar(icon));
+    m_icon = fromIconId(icon);
 }
 
 void NotificationBasicWidget::setInterval(int msec)
@@ -327,11 +309,7 @@ void NotificationBasicWidget::mousePressEvent(QMouseEvent *)
     emit m_parent->closeNotification(m_parent);
 }
 
-#if QT_VERSION >= QT_VERSION_CHECK(6,0,0)
 void NotificationBasicWidget::enterEvent(QEnterEvent *event)
-#else
-void NotificationBasicWidget::enterEvent(QEvent *event)
-#endif
 {
     setWindowOpacity(1.0);
     m_timer.stop();

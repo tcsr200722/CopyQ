@@ -1,53 +1,44 @@
-/*
-    Copyright (c) 2020, Lukas Holecek <hluk@email.cz>
+// SPDX-License-Identifier: GPL-3.0-or-later
 
-    This file is part of CopyQ.
+#pragma once
 
-    CopyQ is free software: you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation, either version 3 of the License, or
-    (at your option) any later version.
-
-    CopyQ is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
-
-    You should have received a copy of the GNU General Public License
-    along with CopyQ.  If not, see <http://www.gnu.org/licenses/>.
-*/
-
-#ifndef CONFIG_H
-#define CONFIG_H
-
-class QByteArray;
-class QPoint;
 class QString;
-class QVariant;
-class QWidget;
 
-const QString &getConfigurationFilePath();
+bool ensureSettingsDirectoryExists();
 
-QString getConfigurationFilePath(const char *suffix);
+const QString &configurationFilePath();
+
+QString configurationFilePath(const char *suffix);
 
 const QString &settingsDirectoryPath();
 
-QVariant geometryOptionValue(const QString &optionName);
-void setGeometryOptionValue(const QString &optionName, const QVariant &value);
+QString itemDataPath();
 
-void restoreWindowGeometry(QWidget *w, bool openOnCurrentScreen);
+QString tabDataFileBasePath();
 
-void saveWindowGeometry(QWidget *w, bool openOnCurrentScreen);
+QString statePath();
 
-QByteArray mainWindowState(const QString &mainWindowObjectName);
+QString stateFilePath(const char *suffix);
 
-void saveMainWindowState(const QString &mainWindowObjectName, const QByteArray &state);
+bool ensureStateDirectoryExists();
 
-void moveToCurrentWorkspace(QWidget *w);
+/**
+ * Returns the path to launch CopyQ from outside the current process.
+ *
+ * Inside an AppImage, the running binary lives on a temporary FUSE mount
+ * (e.g. /tmp/.mount_CopyQXXXXXX/usr/bin/copyq) that disappears when the
+ * AppImage exits. Callers that persist the path -- the $COPYQ env var
+ * exported to user scripts, and the Exec= line in the autostart desktop
+ * file -- need the stable AppImage file path ($APPIMAGE) instead.
+ *
+ * When $APPIMAGE is unset (non-AppImage build or env var not propagated),
+ * falls back to QCoreApplication::applicationFilePath().
+ */
+QString applicationLaunchPath();
 
-void moveWindowOnScreen(QWidget *w, QPoint pos);
-
-void setGeometryGuardBlockedUntilHidden(QWidget *w, bool blocked);
-bool isGeometryGuardBlockedUntilHidden(const QWidget *w);
-
-#endif // CONFIG_H
+/**
+ * Adjusts a compile-time install path for the runtime environment.
+ * With AppImage support, prepends $APPDIR so bundled resources are found.
+ * Without AppImage support, returns the path unchanged.
+ */
+QString adjustedInstallPath(const QString &compiledPath);

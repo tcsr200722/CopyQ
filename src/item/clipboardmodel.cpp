@@ -1,21 +1,4 @@
-/*
-    Copyright (c) 2020, Lukas Holecek <hluk@email.cz>
-
-    This file is part of CopyQ.
-
-    CopyQ is free software: you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation, either version 3 of the License, or
-    (at your option) any later version.
-
-    CopyQ is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
-
-    You should have received a copy of the GNU General Public License
-    along with CopyQ.  If not, see <http://www.gnu.org/licenses/>.
-*/
+// SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "clipboardmodel.h"
 
@@ -25,7 +8,6 @@
 #include <QStringList>
 
 #include <algorithm>
-#include <functional>
 
 namespace {
 
@@ -142,7 +124,7 @@ void ClipboardModel::insertItem(const QVariantMap &data, int row)
     endInsertRows();
 }
 
-void ClipboardModel::insertItems(const QList<QVariantMap> &dataList, int row)
+void ClipboardModel::insertItems(const QVector<QVariantMap> &dataList, int row)
 {
     if ( dataList.isEmpty() )
         return;
@@ -158,6 +140,35 @@ void ClipboardModel::insertItems(const QList<QVariantMap> &dataList, int row)
     }
 
     endInsertRows();
+}
+
+void ClipboardModel::setItemsData(const QMap<QPersistentModelIndex, QVariantMap> &itemsData)
+{
+    QPersistentModelIndex topIndex;
+    QPersistentModelIndex bottomIndex;
+
+    for (auto it = std::begin(itemsData); it != std::end(itemsData); ++it) {
+        const QPersistentModelIndex &index = it.key();
+        if ( !index.isValid() )
+            continue;
+
+        const int row = index.row();
+        ClipboardItem &item = m_clipboardList[row];
+
+        // Emit dataChanged() only if really changed.
+        if ( item.setData(it.value()) ) {
+            if ( !topIndex.isValid() ) {
+                topIndex = index;
+                bottomIndex = index;
+            } else {
+                topIndex = std::min(topIndex, index);
+                bottomIndex = std::max(bottomIndex, index);
+            }
+        }
+    }
+
+    if ( topIndex.isValid() )
+        emit dataChanged(topIndex, bottomIndex);
 }
 
 bool ClipboardModel::insertRows(int position, int rows, const QModelIndex&)
@@ -219,10 +230,14 @@ void ClipboardModel::sortItems(const QModelIndexList &indexList, CompareItems *c
 {
     QList<QPersistentModelIndex> list = validIndeces(indexList);
     std::sort( list.begin(), list.end(), compare );
+    sortItems(list);
+}
 
-    int targetRow = topMostRow(list);
+void ClipboardModel::sortItems(const QList<QPersistentModelIndex> &sorted)
+{
+    int targetRow = topMostRow(sorted);
 
-    for (const auto &ind : list) {
+    for (const auto &ind : sorted) {
         if (ind.isValid()) {
             const int sourceRow = ind.row();
 

@@ -1,28 +1,13 @@
-/*
-    Copyright (c) 2020, Lukas Holecek <hluk@email.cz>
-
-    This file is part of CopyQ.
-
-    CopyQ is free software: you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation, either version 3 of the License, or
-    (at your option) any later version.
-
-    CopyQ is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
-
-    You should have received a copy of the GNU General Public License
-    along with CopyQ.  If not, see <http://www.gnu.org/licenses/>.
-*/
+// SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "dummyclipboard.h"
 
 #include "common/common.h"
 #include "common/log.h"
+#include "common/mimetypes.h"
 
 #include <QGuiApplication>
+#include <QMimeData>
 #include <QStringList>
 
 QClipboard::Mode modeToQClipboardMode(ClipboardMode mode)
@@ -38,44 +23,75 @@ QClipboard::Mode modeToQClipboardMode(ClipboardMode mode)
     return QClipboard::Clipboard;
 }
 
-void DummyClipboard::startMonitoring(const QStringList &)
+void DummyClipboard::startMonitoringBackend(const QStringList &, ClipboardModeMask)
 {
     connect(QGuiApplication::clipboard(), &QClipboard::changed,
             this, &DummyClipboard::onClipboardChanged);
 }
 
+void DummyClipboard::stopMonitoringBackend()
+{
+    disconnect(QGuiApplication::clipboard(), &QClipboard::changed,
+               this, &DummyClipboard::onClipboardChanged);
+}
+
 QVariantMap DummyClipboard::data(ClipboardMode mode, const QStringList &formats) const
 {
     const QMimeData *data = mimeData(mode);
-    return data ? cloneData(*data, formats) : QVariantMap();
+    if (data == nullptr)
+        return {};
+
+    const bool isDataSecret = isHidden(*data);
+    QVariantMap dataMap = cloneData(data, formats, clipboardSequenceNumber(mode));
+    if (isDataSecret)
+        dataMap[mimeSecret] = QByteArrayLiteral("1");
+
+    return dataMap;
 }
 
 void DummyClipboard::setData(ClipboardMode mode, const QVariantMap &dataMap)
 {
-    Q_ASSERT( isMainThread() );
-
     QGuiApplication::clipboard()->setMimeData( createMimeData(dataMap), modeToQClipboardMode(mode) );
+}
+
+void DummyClipboard::setRawData(ClipboardMode mode, QMimeData *mimeData)
+{
+    QGuiApplication::clipboard()->setMimeData( mimeData, modeToQClipboardMode(mode) );
+}
+
+const QMimeData *DummyClipboard::rawMimeData(ClipboardMode mode) const
+{
+    return QGuiApplication::clipboard()->mimeData( modeToQClipboardMode(mode) );
 }
 
 const QMimeData *DummyClipboard::mimeData(ClipboardMode mode) const
 {
     const auto modeText = mode == ClipboardMode::Clipboard ? "clipboard" : "selection";
 
-    COPYQ_LOG_VERBOSE( QString("Getting %1 data.").arg(modeText) );
-    const QMimeData *data = QGuiApplication::clipboard()->mimeData( modeToQClipboardMode(mode) );
+    COPYQ_LOG_VERBOSE( QStringLiteral("Getting %1 data").arg(modeText) );
+    const QMimeData *data = rawMimeData(mode);
 
-    if (data)
-        COPYQ_LOG_VERBOSE( QString("Got %1 data.").arg(modeText) );
-    else
-        log( QString("Null data in %1.").arg(modeText), LogError );
+    if (!data) {
+        log( QStringLiteral("Null data in %1").arg(modeText), LogError );
+        return nullptr;
+    }
 
+    COPYQ_LOG_VERBOSE( QStringLiteral("Got %1 data").arg(modeText) );
     return data;
+}
+
+bool DummyClipboard::isHidden(const QMimeData &data) const
+{
+    const QByteArray passwordManagerHint = data.data(QStringLiteral("x-kde-passwordManagerHint"));
+    return passwordManagerHint == QByteArrayLiteral("secret");
 }
 
 void DummyClipboard::onChanged(int mode)
 {
     if (mode == QClipboard::Clipboard)
-        emit changed(ClipboardMode::Clipboard);
+        emitConnectionChanged(ClipboardMode::Clipboard);
+    else if (mode == QClipboard::Selection)
+        emitConnectionChanged(ClipboardMode::Selection);
 }
 
 void DummyClipboard::onClipboardChanged(QClipboard::Mode mode)

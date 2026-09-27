@@ -2,12 +2,12 @@
 
 [![Documentation Status](https://readthedocs.org/projects/copyq/badge/?version=latest)](https://copyq.readthedocs.io/en/latest/?badge=latest)
 [![Translation Status](https://hosted.weblate.org/widgets/copyq/-/svg-badge.svg)](https://hosted.weblate.org/engage/copyq/?utm_source=widget)
-[![Linux Build Status](https://github.com/hluk/CopyQ/workflows/Linux%20Build/badge.svg?branch=master&event=push)](https://github.com/hluk/CopyQ/actions?query=branch%3Amaster+event%3Apush+workflow%3A%22Linux+Build%22)
-[![macOS Build Status](https://github.com/hluk/CopyQ/workflows/macOS%20Build/badge.svg?branch=master&event=push)](https://github.com/hluk/CopyQ/actions?query=branch%3Amaster+event%3Apush+workflow%3A%22macOS+Build%22)
-[![Windows Build Status](https://ci.appveyor.com/api/projects/status/github/hluk/copyq?branch=master&svg=true)](https://ci.appveyor.com/project/hluk/copyq)
-[![Coverage Status](https://coveralls.io/repos/hluk/CopyQ/badge.svg?branch=master)](https://coveralls.io/r/hluk/CopyQ?branch=master)
+[![Linux Build Status](https://github.com/hluk/CopyQ/actions/workflows/build-linux.yml/badge.svg?branch=master&event=push)](https://github.com/hluk/CopyQ/actions?query=branch%3Amaster+event%3Apush+workflow%3ALinux)
+[![macOS Build Status](https://github.com/hluk/CopyQ/actions/workflows/build-macos.yml/badge.svg?branch=master&event=push)](https://github.com/hluk/CopyQ/actions?query=branch%3Amaster+event%3Apush+workflow%3AmacOS)
+[![Windows Build Status](https://github.com/hluk/CopyQ/actions/workflows/build-windows.yml/badge.svg?branch=master&event=push)](https://github.com/hluk/CopyQ/actions?query=branch%3Amaster+event%3Apush+workflow%3AWindows)
+[![Coverage Status](https://codecov.io/gh/hluk/CopyQ/branch/master/graph/badge.svg)](https://codecov.io/gh/hluk/CopyQ)
 
-CopyQ is advanced clipboard manager with editing and scripting features.
+CopyQ is an advanced clipboard manager with powerful editing and scripting features.
 
 - [Downloads](https://github.com/hluk/CopyQ/releases)
 - [Web Site](https://hluk.github.io/CopyQ/)
@@ -19,22 +19,22 @@ CopyQ is advanced clipboard manager with editing and scripting features.
 
 ## Overview
 
-CopyQ monitors system clipboard and saves its content in customized tabs.
-Saved clipboard can be later copied and pasted directly into any application.
+* CopyQ monitors the system clipboard and saves its content in customized tabs.
+* Saved clipboard entries can later be copied and pasted directly into any application.
 
 ## Features
 
-* Support for Linux, Windows and [OS X 10.13+](https://doc.qt.io/qt-5/macos.html#supported-versions)
-* Store text, HTML, images or any other custom formats
+* Support for Linux, Windows, and [macOS 13+](https://doc.qt.io/qt-6/macos.html)
+* Store text, HTML, images, and any other custom formats
 * Quickly browse and filter items in clipboard history
 * Sort, create, edit, remove, copy/paste, drag'n'drop items in tabs
-* Add notes or tags to items
-* System-wide shortcuts with customizable commands
-* Paste items with shortcut or from tray or main window
+* Add notes and tags to items
+* System-wide keyboard shortcuts with customizable commands
+* Paste items with keyboard shortcuts, from tray, or from main window
 * Fully customizable appearance
 * Advanced command-line interface and scripting
-* Ignore clipboard copied from some windows or containing some text
-* Support for simple Vim-like editor and shortcuts
+* Ignore clipboard copied from specified windows or containing specified text
+* Support for simple Vim-like editor with keyboard shortcuts
 * Many more features
 
 ## Install
@@ -43,18 +43,18 @@ Saved clipboard can be later copied and pasted directly into any application.
     <img src="https://repology.org/badge/vertical-allrepos/copyq.svg" alt="Packaging status" align="right">
 </a>
 
-To install CopyQ, use the binary package or installer provided for your system.
+To install CopyQ, use the binary package or the installer provided for your operating system.
 
-For unlisted systems, please follow the instructions in
+For unlisted operating systems, please follow the instructions in
 [Build from Source Code](https://copyq.readthedocs.io/en/latest/build-source-code.html).
 
 ### Windows
 
 [![Chocolatey package](https://repology.org/badge/version-for-repo/chocolatey/copyq.svg)](https://repology.org/metapackage/copyq)
 
-On Windows you can use one of the following options to install the app:
+On Windows you can use any of the following options to install CopyQ:
 
-* [The Installer (setup.exe)](https://github.com/hluk/CopyQ/releases)
+* [Installer (setup.exe)](https://github.com/hluk/CopyQ/releases)
 * [Portable zip package](https://github.com/hluk/CopyQ/releases)
 * [Scoop package](https://scoop.sh/) from the [extras bucket](https://github.com/lukesampson/scoop-extras).
 * [Chocolatey package](https://chocolatey.org/packages/copyq)
@@ -71,31 +71,37 @@ Using Chocolatey:
 choco install copyq
 ```
 
-### OS X
+### macOS
+
+macOS 13 and above are supported (this mainly depends on the [Qt version](https://doc.qt.io/qt-6/macos.html)).
 
 [![Homebrew package](https://repology.org/badge/version-for-repo/homebrew_casks/copyq.svg)](https://repology.org/metapackage/copyq)
 
-On OS X you can use [Homebrew](https://brew.sh/) to install the app.
+On macOS you can use [Homebrew](https://brew.sh/) to install CopyQ:
 
 ```bash
 brew install --cask copyq
 ```
 
-### Debian 10+, Ubuntu 18.04+, and their derivatives
+If you encounter an issue where the app crashes with a dialog saying "CopyQ is
+damaged" or "CopyQ cannot be opened", you may need to run the following
+commands (for details, see #2652):
 
-Install `copyq` package.
+```bash
+xattr -d com.apple.quarantine /Applications/CopyQ.app
+codesign --force --deep --sign - /Applications/CopyQ.app
+```
 
-`copyq-plugins` is highly recommended. `copyq-doc` available.
+### Debian 11+, Ubuntu 22.04+, and their derivatives
+
+Install `copyq` and `copyq-plugins` packages.
 
 #### Ubuntu PPA
 
-Install and keep CopyQ always up to date by running the following three commands from the terminal:
+The official PPA (`ppa:hluk/copyq`) is no longer maintained. Install the
+packages provided for your distribution.
 
-```bash
-sudo add-apt-repository ppa:hluk/copyq
-sudo apt update
-sudo apt install copyq
-```
+See the [announcement](https://groups.google.com/g/copyq/c/KElH_U2hMO0/m/actmVpQcCQAJ).
 
 ### Fedora
 
@@ -107,14 +113,19 @@ Install `copyq` package.
 
 ### Other Linux Distributions
 
-Install [Flatpak](https://www.flatpak.org/) and `com.github.hluk.copyq` from
-[Flathub](https://flathub.org/).
+Download the latest **AppImage** from
+[GitHub Releases](https://github.com/hluk/CopyQ/releases):
 
 ```bash
-flatpak install flathub com.github.hluk.copyq
+chmod +x CopyQ-*.AppImage
+./CopyQ-*.AppImage
 ```
 
-Start the application from menu or with following command:
+Alternatively, install [Flatpak](https://flatpak.org/) and `com.github.hluk.copyq` from
+[Flathub](https://flathub.org/apps/com.github.hluk.copyq).
+See [Flathub Setup](https://flathub.org/setup) for initial Flatpak/Flathub configuration.
+
+Start CopyQ from the menu or with the following command:
 
 ```bash
 flatpak run com.github.hluk.copyq
@@ -122,26 +133,26 @@ flatpak run com.github.hluk.copyq
 
 ## Using the App
 
-To start the application double-click the program icon or run `copyq`.
+To start CopyQ, double-click the program icon or run `copyq` (on Windows, run `CopyQ.exe`, or launch it from the Start menu; no desktop icon is created by default).
 
-The list with clipboard history is accessible by clicking on system tray icon
-or running `copyq toggle`.
+The list with the clipboard history is accessible by clicking on the system tray icon
+or by running `copyq toggle`.
 
-Copying text or image to clipboard will create new item in the list.
+Copying text or image to the clipboard will create a new item in the list.
 
 Selected items can be:
 
 * edited (`F2`)
 * removed (`Delete`)
 * sorted (`Ctrl+Shift+S`, `Ctrl+Shift+R`)
-* moved around (with mouse or `Ctrl+Up/Down`)
-* copied back to clipboard (`Ctrl+C`)
-* pasted to previously active window (`Enter`)
+* repositioned (with mouse or `Ctrl+Up/Down`)
+* copied back to the clipboard (`Ctrl+C`)
+* pasted to the previously active window (`Enter`)
 
-All items will be restored when application is started next time.
+All items will be restored when CopyQ is next started.
 
-To exit the application select Exit from tray menu or press `Ctrl-Q` keys in the
-application window.
+To exit CopyQ, select Exit from the tray menu or press `Ctrl-Q` in the
+CopyQ window.
 
 Read more:
 
@@ -150,14 +161,14 @@ Read more:
 
 ### Adding Functionality
 
-To create custom action that can be executed
-from menu, with shortcut or when clipboard changes:
-- go to Command dialog (`F6` shortcut),
-- click Add button and select predefined command or create new one,
-- optionally change the command details (shortcut, name),
-- click OK to save the command.
+To create custom actions that can be executed
+from the menu, with keyboard shortcuts, or when the clipboard changes:
+- go to the Command dialog (`F6` shortcut)
+- click the `Add` button, then select a predefined command, or create a new one
+- optionally change the command details (shortcut, name)
+- click `OK` to save the command
 
-One of very useful predefined commands there is "Show/hide main window".
+One of the very useful predefined commands is "Show/hide main window".
 
 Read more:
 
@@ -166,9 +177,9 @@ Read more:
 
 ### Command Line
 
-CopyQ has powerful command line and scripting interface.
+CopyQ has a powerful command line and scripting interface.
 
-Note: The main application must be running to be able to issue commands using
+Note: The main application must be running to be able to issue commands using the
 command line.
 
 Print help for some useful command line arguments:
@@ -176,24 +187,24 @@ Print help for some useful command line arguments:
     copyq --help
     copyq --help add
 
-Insert some texts to the history:
+Insert some text in the history:
 
     copyq add -- 'first item' 'second item' 'third item'
 
-Omitting double-dash (`--`) in the command above would mean that slash
-(`\`) in arguments will be treated as special character so that `\n` is new
-line character, `\t` is tab, `\\` is slash, `\x` is `x` etc.
+Omitting the double-dash (`--`) in the command above would mean that slashes
+(`\`) in arguments will be treated as special characters.  For example, `\n` will be treated as
+the new line character, `\t` as tab, `\\` as slash, `\x` as `x`, etc.
 
-Create single item containing two lines:
+Create a single item containing two lines:
 
     copyq add 'first line\nsecond line'
 
-Print content of the first three items:
+Print the content of the first three items:
 
     copyq read 0 1 2
     copyq separator "," read 0 1 2
 
-Show current clipboard content:
+Show the current clipboard content:
 
     copyq clipboard
     copyq clipboard text/html
@@ -203,7 +214,7 @@ Copy text to the clipboard:
 
     copyq copy "Some Text"
 
-Load file content into clipboard:
+Load file content into the clipboard:
 
     copyq copy - < file.txt
     copyq copy text/html < index.html
@@ -221,76 +232,12 @@ Read more:
 
 ## Build from Source Code
 
-To build the application from source code, first install the required dependencies:
-
-- [Git](https://git-scm.com/)
-- [CMake](https://cmake.org/download/)
-- [Qt](https://download.qt.io/archive/qt/)
-- optional on Linux/X11: development files and libraries for [Xtst](https://t2-project.org/packages/libxtst.html) and [Xfixes](https://www.x.org/archive/X11R7.5/doc/man/man3/Xfixes.3.html)
-
-### Install Dependencies
-
-#### Ubuntu
-
-```bash
-sudo apt install \
-  cmake \
-  extra-cmake-modules \
-  git \
-  libqt5svg5 \
-  libqt5svg5-dev \
-  libqt5waylandclient5-dev \
-  libqt5x11extras5-dev \
-  libwayland-dev \
-  libxfixes-dev \
-  libxtst-dev \
-  qtbase5-private-dev \
-  qtdeclarative5-dev \
-  qttools5-dev \
-  qttools5-dev-tools \
-  qtwayland5 \
-  qtwayland5-dev-tools
-```
-#### RHEL / CentOS / Oracle Linux
-
-```bash
-sudo yum install \
-  cmake \
-  extra-cmake-modules \
-  gcc-c++ \
-  git \
-  libXfixes-devel \
-  libXtst-devel \
-  qt5-qtbase-devel \
-  qt5-qtdeclarative-devel \
-  qt5-qtsvg-devel \
-  qt5-qttools-devel \
-  qt5-qtwayland-devel \
-  qt5-qtx11extras-devel \
-  wayland-devel \
-  kf5-knotifications-devel
-```
-
-### Build the App
-
-Change install prefix if needed:
-
-```bash
-git clone https://github.com/hluk/CopyQ.git
-cd CopyQ
-cmake .
-make
-```
-
-You can now run the built app.
-
-```bash
-./copyq
-```
+See the documentation section [Build from Source
+Code](https://copyq.readthedocs.io/en/latest/build-source-code.html).
 
 ## Contributions
 
-You can help translate the application (click the banner below)
+You can help translate CopyQ (click the banner below)
 or help [fix issues and implement new features](https://github.com/hluk/CopyQ/issues).
 
 [![Translations](https://hosted.weblate.org/widgets/copyq/-/287x66-white.png)](https://hosted.weblate.org/engage/copyq/?utm_source=widget)

@@ -1,27 +1,9 @@
-/*
-    Copyright (c) 2020, Lukas Holecek <hluk@email.cz>
-
-    This file is part of CopyQ.
-
-    CopyQ is free software: you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation, either version 3 of the License, or
-    (at your option) any later version.
-
-    CopyQ is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
-
-    You should have received a copy of the GNU General Public License
-    along with CopyQ.  If not, see <http://www.gnu.org/licenses/>.
-*/
+// SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "itemtext.h"
 #include "ui_itemtextsettings.h"
 
 #include "common/mimetypes.h"
-#include "common/sanitize_text_document.h"
 #include "common/textdata.h"
 
 #include <QAbstractTextDocumentLayout>
@@ -55,7 +37,7 @@ const QLatin1String optionMaximumLines("max_lines");
 const QLatin1String optionMaximumHeight("max_height");
 const QLatin1String optionDefaultStyleSheet("default_style_sheet");
 
-// Some applications insert \0 teminator at the end of text data.
+// Some applications insert \0 terminator at the end of text data.
 // It needs to be removed because QTextBrowser can render the character.
 void removeTrailingNull(QString *text)
 {
@@ -105,6 +87,7 @@ ItemText::ItemText(
     m_textDocument.setDefaultFont(font());
 
     // Disable slow word wrapping initially.
+    setLineWrapMode(QTextEdit::NoWrap);
     QTextOption option = m_textDocument.defaultTextOption();
     option.setWrapMode(QTextOption::NoWrap);
     m_textDocument.setDefaultTextOption(option);
@@ -152,9 +135,6 @@ ItemText::ItemText(
         }
     }
 
-    if (m_isRichText)
-        sanitizeTextDocument(&m_textDocument);
-
     connect( this, &QTextEdit::selectionChanged,
              this, &ItemText::onSelectionChanged );
 }
@@ -171,13 +151,15 @@ void ItemText::updateSize(QSize maximumSize, int idealWidth)
     setFixedWidth(idealWidth);
     m_textDocument.setTextWidth(idealWidth - scrollBarWidth);
 
+    const bool noWrap = maximumSize.width() > idealWidth;
     QTextOption option = m_textDocument.defaultTextOption();
-    const QTextOption::WrapMode wrapMode = maximumSize.width() > idealWidth
+    const auto wrapMode = noWrap
             ? QTextOption::NoWrap : QTextOption::WrapAtWordBoundaryOrAnywhere;
     if (wrapMode != option.wrapMode()) {
         option.setWrapMode(wrapMode);
         m_textDocument.setDefaultTextOption(option);
     }
+    setLineWrapMode(noWrap ? QTextEdit::NoWrap : QTextEdit::WidgetWidth);
 
     // setDocument() is slow, so postpone this after resized properly
     if (document() != &m_textDocument)
@@ -233,9 +215,7 @@ void ItemText::onSelectionChanged()
     m_elidedFragment = QTextDocumentFragment();
 }
 
-ItemTextLoader::ItemTextLoader()
-{
-}
+ItemTextLoader::ItemTextLoader() = default;
 
 ItemTextLoader::~ItemTextLoader() = default;
 
@@ -304,7 +284,7 @@ void ItemTextLoader::loadSettings(const QSettings &settings)
 QWidget *ItemTextLoader::createSettingsWidget(QWidget *parent)
 {
     ui.reset(new Ui::ItemTextSettings);
-    QWidget *w = new QWidget(parent);
+    auto *w = new QWidget(parent);
     ui->setupUi(w);
     ui->checkBoxUseRichText->setChecked(m_useRichText);
     ui->spinBoxMaxLines->setValue(m_maxLines);

@@ -1,24 +1,9 @@
-/*
-    Copyright (c) 2020, Lukas Holecek <hluk@email.cz>
+// SPDX-License-Identifier: GPL-3.0-or-later
 
-    This file is part of CopyQ.
+#pragma once
 
-    CopyQ is free software: you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation, either version 3 of the License, or
-    (at your option) any later version.
 
-    CopyQ is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
-
-    You should have received a copy of the GNU General Public License
-    along with CopyQ.  If not, see <http://www.gnu.org/licenses/>.
-*/
-
-#ifndef TRAYMENU_H
-#define TRAYMENU_H
+#include "common/navigationstyle.h"
 
 #include <QMenu>
 #include <QPointer>
@@ -33,12 +18,15 @@ class TrayMenu final : public QMenu
 public:
     explicit TrayMenu(QWidget *parent = nullptr);
 
+    static void updateTextFromData(QAction *act, const QVariantMap &data);
+    static bool updateIconFromData(QAction *act, const QVariantMap &data);
+
     /**
      * Add clipboard item action with number key hint.
      *
      * Triggering this action emits clipboardItemActionTriggered() signal.
      */
-    void addClipboardItemAction(const QVariantMap &data, bool showImages);
+    QAction *addClipboardItemAction(const QVariantMap &data, bool showImages);
 
     void clearClipboardItems();
 
@@ -50,8 +38,7 @@ public:
     /** Clear clipboard item actions and curstom actions. */
     void clearAllActions();
 
-    /** Handle Vi shortcuts. */
-    void setViModeEnabled(bool enabled);
+    void setNavigationStyle(NavigationStyle style);
 
     /** Enable searching for numbers. */
     void setNumberSearchEnabled(bool enabled);
@@ -96,8 +83,8 @@ private:
     int m_clipboardItemActionCount;
 
     bool m_omitPaste;
-    bool m_viMode;
     bool m_numberSearch;
+    NavigationStyle m_navigationStyle = NavigationStyle::Default;
 
     QString m_searchText;
 
@@ -108,5 +95,3 @@ private:
     QList<QAction*> m_clipboardActions;
     QList<QAction*> m_customActions;
 };
-
-#endif // TRAYMENU_H

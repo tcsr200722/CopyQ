@@ -1,24 +1,7 @@
-/*
-    Copyright (c) 2020, Lukas Holecek <hluk@email.cz>
+// SPDX-License-Identifier: GPL-3.0-or-later
 
-    This file is part of CopyQ.
+#pragma once
 
-    CopyQ is free software: you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation, either version 3 of the License, or
-    (at your option) any later version.
-
-    CopyQ is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
-
-    You should have received a copy of the GNU General Public License
-    along with CopyQ.  If not, see <http://www.gnu.org/licenses/>.
-*/
-
-#ifndef CLIENTSOCKET_H
-#define CLIENTSOCKET_H
 
 #include <QLocalSocket>
 #include <QObject>
@@ -34,8 +17,8 @@ public:
 
     QLocalSocket *get() const { return m_socket; }
     QLocalSocket *operator->() const { return m_socket; }
-    operator QLocalSocket*() { return m_socket; }
-    operator bool() { return !m_socket.isNull(); }
+    explicit operator QLocalSocket*() const { return m_socket; }
+    explicit operator bool() const { return !m_socket.isNull(); }
 
     LocalSocketGuard(const LocalSocketGuard &) = delete;
     LocalSocketGuard &operator=(const LocalSocketGuard &) = delete;
@@ -90,5 +73,3 @@ private:
     quint32 m_messageLength = 0;
     QByteArray m_message;
 };
-
-#endif // CLIENTSOCKET_H

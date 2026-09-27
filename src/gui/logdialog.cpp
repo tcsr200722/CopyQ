@@ -1,21 +1,4 @@
-/*
-    Copyright (c) 2020, Lukas Holecek <hluk@email.cz>
-
-    This file is part of CopyQ.
-
-    CopyQ is free software: you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation, either version 3 of the License, or
-    (at your option) any later version.
-
-    CopyQ is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
-
-    You should have received a copy of the GNU General Public License
-    along with CopyQ.  If not, see <http://www.gnu.org/licenses/>.
-*/
+// SPDX-License-Identifier: GPL-3.0-or-later
 #include "gui/logdialog.h"
 #include "ui_logdialog.h"
 
@@ -34,13 +17,14 @@
 
 namespace {
 
-const int maxDisplayLogSize = 128 * 1024;
-const auto logLinePrefix = "CopyQ ";
+constexpr int maxDisplayLogSize = 128 * 1024;
+constexpr auto logLinePrefixSize =
+    std::char_traits<char>::length("[yyyy-MM-dd hh:mm:ss.zzz] ");
 
 void removeLogLines(QByteArray *content, LogLevel level)
 {
-    const QByteArray label = logLinePrefix + logLevelLabel(level);
-    if ( content->startsWith(label) ) {
+    const QByteArray label = logLevelLabel(level);
+    if ( content->mid(logLinePrefixSize).startsWith(label) ) {
         const int i = content->indexOf('\n');
         if (i == -1) {
             content->clear();
@@ -119,7 +103,7 @@ class LogDecorator final : public Decorator
 {
 public:
     LogDecorator(const QFont &font, QObject *parent)
-        : Decorator(QRegularExpression("^[^\\]]*\\]"), parent)
+        : Decorator(QRegularExpression("^[^\\]]*\\] \\w+"), parent)
         , m_labelNote(logLevelLabel(LogNote))
         , m_labelError(logLevelLabel(LogError))
         , m_labelWarning(logLevelLabel(LogWarning))
@@ -152,7 +136,7 @@ public:
 private:
     void decorate(QTextCursor *tc) override
     {
-        const QString text = tc->selectedText();
+        const QString text = tc->selectedText().mid(logLinePrefixSize);
         if ( text.startsWith(m_labelNote) )
             tc->setCharFormat(m_noteLogLevelFormat);
         else if ( text.startsWith(m_labelError) )
@@ -200,7 +184,7 @@ class ThreadNameDecorator final : public Decorator
 {
 public:
     explicit ThreadNameDecorator(const QFont &font, QObject *parent)
-        : Decorator(QRegularExpression("<[A-Za-z]+-[0-9-]+>"), parent)
+        : Decorator(QRegularExpression("<[A-Za-z/]+-[0-9-]+>"), parent)
     {
         QFont boldFont = font;
         boldFont.setBold(true);
@@ -219,9 +203,9 @@ private:
 
         const auto bg =
                 text.startsWith("<Server-") ? QColor::fromRgb(255, 255, 200)
-              : text.startsWith("<monitor") ? QColor::fromRgb(220, 240, 255)
-              : text.startsWith("<provide") ? QColor::fromRgb(220, 255, 220)
-              : text.startsWith("<synchronize") ? QColor::fromRgb(220, 255, 240)
+              : text.startsWith("<cmd/monitor") ? QColor::fromRgb(220, 240, 255)
+              : text.startsWith("<cmd/provide") ? QColor::fromRgb(220, 255, 220)
+              : text.startsWith("<cmd/synchronize") ? QColor::fromRgb(220, 255, 240)
               : QColor(Qt::white);
         m_format.setBackground(bg);
 
@@ -273,12 +257,6 @@ void LogDialog::updateLog()
 {
     QByteArray content = readLogFile(maxDisplayLogSize);
 
-    // Remove first line if incomplete.
-    if ( !content.startsWith(logLinePrefix) ) {
-        const int i = content.indexOf('\n');
-        content.remove(0, i + 1);
-    }
-
     if(!m_showTrace)
         removeLogLines(&content, LogTrace);
     if(!m_showDebug)
@@ -289,12 +267,6 @@ void LogDialog::updateLog()
         removeLogLines(&content, LogWarning);
     if(!m_showError)
         removeLogLines(&content, LogError);
-
-    // Remove common prefix.
-    const QByteArray prefix = logLinePrefix;
-    if ( content.startsWith(prefix) )
-        content.remove( 0, prefix.size() );
-    content.replace('\n' + prefix, "\n");
 
     ui->textBrowserLog->setPlainText(QString::fromUtf8(content));
 

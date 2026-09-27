@@ -1,30 +1,13 @@
-/*
-    Copyright (c) 2020, Lukas Holecek <hluk@email.cz>
-
-    This file is part of CopyQ.
-
-    CopyQ is free software: you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation, either version 3 of the License, or
-    (at your option) any later version.
-
-    CopyQ is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
-
-    You should have received a copy of the GNU General Public License
-    along with CopyQ.  If not, see <http://www.gnu.org/licenses/>.
-*/
+// SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "iconselectbutton.h"
 
-#include "common/config.h"
 #include "common/common.h"
 #include "gui/fix_icon_id.h"
+#include "gui/geometry.h"
 #include "gui/iconfont.h"
 #include "gui/iconselectdialog.h"
-#include "gui/icons.h"
+#include "gui/fromiconid.h"
 
 #include <QApplication>
 #include <QIcon>
@@ -57,7 +40,7 @@ void IconSelectButton::setCurrentIcon(const QString &iconString)
     if ( iconString.size() == 1 ) {
         const QChar c = iconString[0];
         const ushort id = fixIconId( c.unicode() );
-        m_currentIcon = QString(QChar(id));
+        m_currentIcon = fromIconId(id);
         setFont(iconFont());
         setText(m_currentIcon);
     } else if ( !iconString.isEmpty() ) {
@@ -96,4 +79,3 @@ void IconSelectButton::onClicked()
     dialog->open();
     dialog.release();
 }
-

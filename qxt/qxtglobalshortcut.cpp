@@ -32,14 +32,16 @@
 #include "qxtglobalshortcut_p.h"
 
 #include <QAbstractEventDispatcher>
+#include <QApplication>
+#include <QMessageBox>
 
-#ifndef Q_OS_MAC
-int QxtGlobalShortcutPrivate::ref = 0;
-#   if QT_VERSION < QT_VERSION_CHECK(5,0,0)
-QAbstractEventDispatcher::EventFilter QxtGlobalShortcutPrivate::prevEventFilter = 0;
-#   endif
-#endif // Q_OS_MAC
-QHash<QPair<quint32, quint32>, QxtGlobalShortcut*> QxtGlobalShortcutPrivate::shortcuts;
+namespace {
+
+int referenceCounter = 0;
+
+QHash<QPair<quint32, quint32>, QxtGlobalShortcut*> shortcuts;
+
+} // namespace
 
 QxtGlobalShortcutPrivate::QxtGlobalShortcutPrivate(QxtGlobalShortcut *q)
     : enabled(true)
@@ -50,51 +52,51 @@ QxtGlobalShortcutPrivate::QxtGlobalShortcutPrivate(QxtGlobalShortcut *q)
     , registered(false)
     , q_ptr(q)
 {
-#ifndef Q_OS_MAC
-    if (ref == 0) {
-#   if QT_VERSION < QT_VERSION_CHECK(5,0,0)
-        prevEventFilter = QAbstractEventDispatcher::instance()->setEventFilter(eventFilter);
-#   else
-        QAbstractEventDispatcher::instance()->installNativeEventFilter(this);
-#endif
-    }
-    ++ref;
-#endif // Q_OS_MAC
+    init();
 }
 
 QxtGlobalShortcutPrivate::~QxtGlobalShortcutPrivate()
 {
     unsetShortcut();
-
-#ifndef Q_OS_MAC
-    --ref;
-    if (ref == 0) {
-        QAbstractEventDispatcher *ed = QAbstractEventDispatcher::instance();
-        if (ed != nullptr) {
-#   if QT_VERSION < QT_VERSION_CHECK(5,0,0)
-            ed->setEventFilter(prevEventFilter);
-#   else
-            ed->removeNativeEventFilter(this);
-#   endif
-        }
-    }
-#endif // Q_OS_MAC
+    destroy();
 }
 
-bool QxtGlobalShortcutPrivate::setShortcut(const QKeySequence& shortcut)
+void QxtGlobalShortcutPrivate::initFallback()
 {
-    unsetShortcut();
+    if (referenceCounter == 0) {
+        QAbstractEventDispatcher::instance()->installNativeEventFilter(this);
+    }
+    ++referenceCounter;
+}
 
+void QxtGlobalShortcutPrivate::destroyFallback()
+{
+    --referenceCounter;
+    if (referenceCounter == 0) {
+        QAbstractEventDispatcher *ed = QAbstractEventDispatcher::instance();
+        if (ed != nullptr) {
+            ed->removeNativeEventFilter(this);
+        }
+    }
+}
+
+void QxtGlobalShortcutPrivate::setKeySequence(const QKeySequence& shortcut)
+{
     const Qt::KeyboardModifiers allMods =
             Qt::ShiftModifier | Qt::ControlModifier | Qt::AltModifier | Qt::MetaModifier | Qt::KeypadModifier;
-    const auto xkeyCode = static_cast<uint>( shortcut.isEmpty() ? 0 : shortcut[0] );
+    const auto xkeyCode = static_cast<uint>( shortcut.isEmpty() ? 0 : shortcut[0].toCombined() );
     // WORKAROUND: Qt has convert some keys to upper case which
     //             breaks some shortcuts on some keyboard layouts.
     const uint keyCode = QChar::toLower(xkeyCode & ~allMods);
 
     key = Qt::Key(keyCode);
     mods = Qt::KeyboardModifiers(xkeyCode & allMods);
+}
 
+bool QxtGlobalShortcutPrivate::setShortcutFallback(const QKeySequence& shortcut)
+{
+    unsetShortcut();
+    setKeySequence(shortcut);
     nativeKey = nativeKeycode(key, mods);
     nativeMods = nativeModifiers(mods);
 
@@ -105,7 +107,7 @@ bool QxtGlobalShortcutPrivate::setShortcut(const QKeySequence& shortcut)
     return registered;
 }
 
-bool QxtGlobalShortcutPrivate::unsetShortcut()
+bool QxtGlobalShortcutPrivate::unsetShortcutFallback()
 {
     if (registered
             && shortcuts.value(qMakePair(nativeKey, nativeMods)) == q_ptr
@@ -156,17 +158,19 @@ void QxtGlobalShortcutPrivate::activateShortcut(quint32 nativeKey, quint32 nativ
  */
 QxtGlobalShortcut::QxtGlobalShortcut(QObject* parent)
     : QObject(parent)
-    , d_ptr(new QxtGlobalShortcutPrivate(this))
+    , m_private(new QxtGlobalShortcutPrivate(this))
 {
 }
 
 /*!
     Constructs a new QxtGlobalShortcut with \a shortcut and \a parent.
  */
-QxtGlobalShortcut::QxtGlobalShortcut(const QKeySequence& shortcut, QObject* parent)
+QxtGlobalShortcut::QxtGlobalShortcut(
+    const QKeySequence& shortcut, const QString &name, QObject* parent)
     : QxtGlobalShortcut(parent)
 {
     setShortcut(shortcut);
+    setName(name);
 }
 
 /*!
@@ -174,7 +178,7 @@ QxtGlobalShortcut::QxtGlobalShortcut(const QKeySequence& shortcut, QObject* pare
  */
 QxtGlobalShortcut::~QxtGlobalShortcut()
 {
-    delete d_ptr;
+    delete m_private;
 }
 
 /*!
@@ -195,7 +199,7 @@ QxtGlobalShortcut::~QxtGlobalShortcut()
  */
 QKeySequence QxtGlobalShortcut::shortcut() const
 {
-    return QKeySequence( static_cast<int>(d_ptr->key | d_ptr->mods) );
+    return QKeySequence( QKeyCombination(m_private->mods, m_private->key) );
 }
 
 /*!
@@ -206,7 +210,17 @@ QKeySequence QxtGlobalShortcut::shortcut() const
  */
 bool QxtGlobalShortcut::setShortcut(const QKeySequence& shortcut)
 {
-    return d_ptr->setShortcut(shortcut);
+    return m_private->setShortcut(shortcut);
+}
+
+QString QxtGlobalShortcut::name() const
+{
+    return m_private->name;
+}
+
+void QxtGlobalShortcut::setName(const QString& name)
+{
+    m_private->name = name;
 }
 
 /*!
@@ -221,7 +235,7 @@ bool QxtGlobalShortcut::setShortcut(const QKeySequence& shortcut)
  */
 bool QxtGlobalShortcut::isEnabled() const
 {
-    return d_ptr->enabled;
+    return m_private->enabled;
 }
 
 /*!
@@ -230,7 +244,47 @@ bool QxtGlobalShortcut::isEnabled() const
  */
 bool QxtGlobalShortcut::isValid() const
 {
-    return d_ptr->registered;
+    return m_private->registered;
+}
+
+/*!
+    Activates the shortcut if enabled.
+
+    \sa activated()
+ */
+void QxtGlobalShortcut::activate()
+{
+    if (m_private->enabled)
+        emit activated(this);
+}
+
+/*!
+    Notifies the user that changing global shortcuts requires application restart.
+
+    This needed on some platforms like Wayland, because global shortcuts cannot
+    be rebound again.
+
+    This shows a message box for the first found top level window. If no
+    visible window is found, nothing is shown. This avoids showing a message
+    box when application is exiting.
+ */
+void QxtGlobalShortcut::notifyRestartNeeded()
+{
+    const QWidgetList topLevelWidgets = QApplication::topLevelWidgets();
+    QWidget *parentWindow = nullptr;
+    for (QWidget *widget : topLevelWidgets) {
+        if (widget->isVisible()) {
+            parentWindow = widget;
+            break;
+        }
+    }
+    if (parentWindow == nullptr)
+        return;
+    QMessageBox::information(
+        parentWindow,
+        tr("Restart Required"),
+        tr("Changing global shortcuts requires application restart.")
+    );
 }
 
 /*!
@@ -240,7 +294,7 @@ bool QxtGlobalShortcut::isValid() const
  */
 void QxtGlobalShortcut::setEnabled(bool enabled)
 {
-    d_ptr->enabled = enabled;
+    m_private->enabled = enabled;
 }
 
 /*!
@@ -250,5 +304,5 @@ void QxtGlobalShortcut::setEnabled(bool enabled)
  */
 void QxtGlobalShortcut::setDisabled(bool disabled)
 {
-    d_ptr->enabled = !disabled;
+    m_private->enabled = !disabled;
 }

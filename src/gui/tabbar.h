@@ -1,24 +1,7 @@
-/*
-    Copyright (c) 2020, Lukas Holecek <hluk@email.cz>
+// SPDX-License-Identifier: GPL-3.0-or-later
 
-    This file is part of CopyQ.
+#pragma once
 
-    CopyQ is free software: you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation, either version 3 of the License, or
-    (at your option) any later version.
-
-    CopyQ is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
-
-    You should have received a copy of the GNU General Public License
-    along with CopyQ.  If not, see <http://www.gnu.org/licenses/>.
-*/
-
-#ifndef TABBAR_H
-#define TABBAR_H
 
 #include "gui/tabswidgetinterface.h"
 
@@ -50,9 +33,10 @@ public:
 
     void insertTab(int index, const QString &tabName) override;
     void removeTab(int index) override;
+    void moveTab(int from, int to) override;
 
-    void updateCollapsedTabs(QList<QString> *) const override {}
-    void setCollapsedTabs(const QList<QString> &) override {}
+    void updateCollapsedTabs(QList<QString> *) const override { /* Tab collapsing not supported in this implementation */ }
+    void setCollapsedTabs(const QList<QString> &) override { /* Tab collapsing not supported in this implementation */ }
 
     void updateTabIcons(const QHash<QString, QString> &tabIcons) override;
 
@@ -61,12 +45,12 @@ public:
 
     void setCurrentTab(int index) override;
 
-    virtual void adjustSize() override;
+    void adjustSize() override;
 
 signals:
     void tabBarMenuRequested(const QPoint &pos, int tab);
     void tabRenamed(const QString &newName, int index);
-    void dropItems(const QString &tabName, const QMimeData *data);
+    void dropItems(const QString &tabName, const QMimeData *data, bool *accepted);
 
 protected:
     void contextMenuEvent(QContextMenuEvent *event) override;
@@ -81,5 +65,3 @@ private:
 
     void updateTabStyle(int index);
 };
-
-#endif // TABBAR_H

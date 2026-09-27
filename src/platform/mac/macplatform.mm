@@ -1,23 +1,7 @@
-/*
-    Copyright (c) 2020, Lukas Holecek <hluk@email.cz>
-
-    This file is part of CopyQ.
-
-    CopyQ is free software: you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation, either version 3 of the License, or
-    (at your option) any later version.
-
-    CopyQ is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
-
-    You should have received a copy of the GNU General Public License
-    along with CopyQ.  If not, see <http://www.gnu.org/licenses/>.
-*/
+// SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "macplatform.h"
+#include "cfref.h"
 
 #include "app/applicationexceptionhandler.h"
 #include "common/log.h"
@@ -28,6 +12,7 @@
 #include "urlpasteboardmime.h"
 #include "macclipboard.h"
 
+#include <libproc.h>
 #include <QApplication>
 #include <QCoreApplication>
 #include <QDir>
@@ -37,6 +22,7 @@
 
 #include <Cocoa/Cocoa.h>
 #include <Carbon/Carbon.h>
+#include <mach/mach.h>
 
 namespace {
     class ClipboardApplication : public QApplication
@@ -67,13 +53,13 @@ namespace {
     bool isApplicationInItemList(LSSharedFileListRef list) {
         bool flag = false;
         UInt32 seed;
-        CFArrayRef items = LSSharedFileListCopySnapshot(list, &seed);
+        CFRef<CFArrayRef> items = LSSharedFileListCopySnapshot(list, &seed);
         if (items) {
             CFURLRef url = (__bridge CFURLRef)[NSURL fileURLWithPath:[[NSBundle mainBundle] bundlePath]];
             if (url) {
-                for (id item in(__bridge NSArray *) items) {
+                for (id item in(__bridge NSArray *) items.get()) {
                     LSSharedFileListItemRef itemRef = (__bridge LSSharedFileListItemRef)item;
-                    if (LSSharedFileListItemResolve(itemRef, 0, &url, NULL) == noErr) {
+                    if (LSSharedFileListItemResolve(itemRef, 0, &url, nullptr) == noErr) {
                         if ([[(__bridge NSURL *) url path] hasPrefix:[[NSBundle mainBundle] bundlePath]]) {
                             flag = true;
                             break;
@@ -81,14 +67,13 @@ namespace {
                     }
                 }
             }
-            CFRelease(items);
         }
         return flag;
     }
 
     void addToLoginItems()
     {
-        LSSharedFileListRef list = LSSharedFileListCreate(kCFAllocatorDefault, kLSSharedFileListSessionLoginItems, NULL);
+        CFRef<LSSharedFileListRef> list = LSSharedFileListCreate(kCFAllocatorDefault, kLSSharedFileListSessionLoginItems, nullptr);
         if (list) {
             if (!isApplicationInItemList(list)) {
                 CFURLRef url = (__bridge CFURLRef)[NSURL fileURLWithPath:[[NSBundle mainBundle] bundlePath]];
@@ -97,14 +82,12 @@ namespace {
                     NSDictionary *properties = [NSDictionary
                         dictionaryWithObject: [NSNumber numberWithBool:NO]
                         forKey: @"com.apple.loginitem.HideOnLaunch"];
-                    LSSharedFileListItemRef item = LSSharedFileListInsertItemURL(list, kLSSharedFileListItemLast, NULL, NULL, url, (__bridge CFDictionaryRef)properties, NULL);
-                    if (item)
-                        CFRelease(item);
+                    CFRef<LSSharedFileListItemRef> item = LSSharedFileListInsertItemURL(list, kLSSharedFileListItemLast, nullptr, nullptr, url, (__bridge CFDictionaryRef)properties, nullptr);
+                    (void)item;  // released automatically
                 } else {
                     ::log("Unable to find url for bundle, can't auto-load app", LogWarning);
                 }
             }
-            CFRelease(list);
         } else {
             ::log("Unable to access shared file list, can't auto-load app", LogWarning);
         }
@@ -112,21 +95,20 @@ namespace {
 
     void removeFromLoginItems()
     {
-        LSSharedFileListRef list = LSSharedFileListCreate(kCFAllocatorDefault, kLSSharedFileListSessionLoginItems, NULL);
+        CFRef<LSSharedFileListRef> list = LSSharedFileListCreate(kCFAllocatorDefault, kLSSharedFileListSessionLoginItems, nullptr);
         if (list) {
             if (isApplicationInItemList(list)) {
                 CFURLRef url = (__bridge CFURLRef)[NSURL fileURLWithPath:[[NSBundle mainBundle] bundlePath]];
                 if (url) {
                     UInt32 seed;
-                    CFArrayRef items = LSSharedFileListCopySnapshot(list, &seed);
+                    CFRef<CFArrayRef> items = LSSharedFileListCopySnapshot(list, &seed);
                     if (items) {
-                        for (id item in(__bridge NSArray *) items) {
+                        for (id item in(__bridge NSArray *) items.get()) {
                             LSSharedFileListItemRef itemRef = (__bridge LSSharedFileListItemRef)item;
-                            if (LSSharedFileListItemResolve(itemRef, 0, &url, NULL) == noErr)
+                            if (LSSharedFileListItemResolve(itemRef, 0, &url, nullptr) == noErr)
                                 if ([[(__bridge NSURL *) url path] hasPrefix:[[NSBundle mainBundle] bundlePath]])
                                     LSSharedFileListItemRemove(list, itemRef);
                         }
-                        CFRelease(items);
                     } else {
                         ::log("No items in list of auto-loaded apps, can't stop auto-load of app", LogWarning);
                     }
@@ -134,7 +116,6 @@ namespace {
                     ::log("Unable to find url for bundle, can't stop auto-load of app", LogWarning);
                 }
             }
-            CFRelease(list);
         } else {
             ::log("Unable to access shared file list, can't stop auto-load of app", LogWarning);
         }
@@ -186,11 +167,6 @@ QApplication *MacPlatform::createServerApplication(int &argc, char **argv)
     return app;
 }
 
-QGuiApplication *MacPlatform::createMonitorApplication(int &argc, char **argv)
-{
-    return new Activity<ClipboardApplication>(argc, argv, "CopyQ clipboard monitor");
-}
-
 QGuiApplication *MacPlatform::createClipboardProviderApplication(int &argc, char **argv)
 {
     return new Activity<ClipboardApplication>(argc, argv, "CopyQ clipboard provider");
@@ -225,19 +201,13 @@ bool MacPlatform::findPluginDir(QDir *pluginsDir)
 {
     pluginsDir->setPath( qApp->applicationDirPath() );
     if (pluginsDir->dirName() != "MacOS") {
-        if ( pluginsDir->cd("plugins")) {
-            COPYQ_LOG("Found plugins in build tree");
-            return true;
-        }
-        return false;
+        return pluginsDir->cd("plugins");
     }
 
     if ( pluginsDir->cdUp() // Contents
             && pluginsDir->cd("PlugIns")
             && pluginsDir->cd("copyq"))
     {
-        // OK, found it in the bundle
-        COPYQ_LOG("Found plugins in application bundle");
         return true;
     }
 
@@ -246,8 +216,8 @@ bool MacPlatform::findPluginDir(QDir *pluginsDir)
     if ( pluginsDir->cdUp() // Contents
             && pluginsDir->cdUp() // copyq.app
             && pluginsDir->cdUp() // repo root
-            && pluginsDir->cd("plugins")) {
-        COPYQ_LOG("Found plugins in build tree");
+            && pluginsDir->cd("plugins"))
+    {
         return true;
     }
 
@@ -292,10 +262,9 @@ bool MacPlatform::isAutostartEnabled()
     // the App Store.
     // http://rhult.github.io/articles/sandboxed-launch-on-login/
     bool isInList = false;
-    LSSharedFileListRef list = LSSharedFileListCreate(kCFAllocatorDefault, kLSSharedFileListSessionLoginItems, NULL);
+    CFRef<LSSharedFileListRef> list = LSSharedFileListCreate(kCFAllocatorDefault, kLSSharedFileListSessionLoginItems, nullptr);
     if (list) {
         isInList = isApplicationInItemList(list);
-        CFRelease(list);
     }
     return isInList;
 }
@@ -309,4 +278,12 @@ void MacPlatform::setAutostartEnabled(bool shouldEnable)
             removeFromLoginItems();
         }
     }
+}
+qint64 MacPlatform::processResidentMemoryBytes(qint64 pid)
+{
+    struct proc_taskinfo pti;
+    const int size = proc_pidinfo(static_cast<int>(pid), PROC_PIDTASKINFO, 0, &pti, sizeof(pti));
+    if (size != sizeof(pti))
+        return -1;
+    return static_cast<qint64>(pti.pti_resident_size);
 }

@@ -1,24 +1,7 @@
-/*
-    Copyright (c) 2020, Lukas Holecek <hluk@email.cz>
+// SPDX-License-Identifier: GPL-3.0-or-later
 
-    This file is part of CopyQ.
+#pragma once
 
-    CopyQ is free software: you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation, either version 3 of the License, or
-    (at your option) any later version.
-
-    CopyQ is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
-
-    You should have received a copy of the GNU General Public License
-    along with CopyQ.  If not, see <http://www.gnu.org/licenses/>.
-*/
-
-#ifndef CONFIGURATIONMANAGER_H
-#define CONFIGURATIONMANAGER_H
 
 #include "item/itemwidget.h"
 
@@ -36,6 +19,10 @@ namespace Ui {
     class ConfigurationManager;
 }
 
+namespace Encryption {
+    class EncryptionKey;
+}
+
 class AppConfig;
 class ConfigTabAppearance;
 class ConfigTabTabs;
@@ -49,6 +36,10 @@ class QComboBox;
 class QLineEdit;
 class QListWidgetItem;
 class QSpinBox;
+enum class NavigationStyle;
+
+struct ClipboardBrowserShared;
+using ClipboardBrowserSharedPtr = std::shared_ptr<ClipboardBrowserShared>;
 
 /**
  * Configuration dialog.
@@ -58,7 +49,7 @@ class ConfigurationManager final : public QDialog
     Q_OBJECT
 
 public:
-    explicit ConfigurationManager(ItemFactory *itemFactory, QWidget *parent = nullptr);
+    explicit ConfigurationManager(const ClipboardBrowserSharedPtr &sharedData, QWidget *parent = nullptr);
 
     /// Simple version of dialog for accessing and settings options from API.
     ConfigurationManager();
@@ -101,6 +92,7 @@ private:
 
     void onCheckBoxMenuTabIsCurrentStateChanged(int);
     void onSpinBoxTrayItemsValueChanged(int value);
+    void onPushButtonChangeEncryptionPasswordClicked();
 
     void updateCommandItem(QListWidgetItem *item);
     void shortcutButtonClicked(QObject *button);
@@ -111,8 +103,7 @@ private:
 
     void initLanguages();
 
-    /** Update autostarting the application. */
-    void updateAutostart();
+    void updateOptionsVisibility();
 
     void initOptions();
 
@@ -126,11 +117,14 @@ private:
     void bind(const QString &optionKey, QSpinBox  *obj, int defaultValue);
     void bind(const QString &optionKey, QLineEdit *obj, const QString &defaultValue);
     void bind(const QString &optionKey, QComboBox *obj, int defaultValue);
+    void bind(const QString &optionKey, QComboBox *obj, NavigationStyle defaultValue);
     void bind(const QString &optionKey, const QVariant &defaultValue, const char *description);
 
     void updateTabComboBoxes();
 
     Ui::ConfigurationManager *ui;
+
+    ClipboardBrowserSharedPtr m_sharedData;
 
     ConfigTabAppearance *m_tabAppearance = nullptr;
     ConfigTabTabs *m_tabTabs = nullptr;
@@ -144,5 +138,3 @@ private:
 
     QHash<QString, Option> m_options;
 };
-
-#endif // CONFIGURATIONMANAGER_H

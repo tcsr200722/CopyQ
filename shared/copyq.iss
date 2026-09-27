@@ -3,23 +3,52 @@
 ; 3. Compile "setup.exe".
 
 ; Path for output installation file
-#define Output "."
+#define Output                   "."
+#define MyAppName                "CopyQ"
+#define MyAppNameMin             "copyq"
+#define MyAppCopyright           "Lukas Holecek"
+#define MyAppCopyrightStartYear  "2009"
+#define MyAppCopyrightEndYear    GetDateTimeString('yyyy','','')
+
+; Default AppVersionNumeric to AppVersion for standalone builds.
+#ifndef AppVersionNumeric
+#define AppVersionNumeric AppVersion
+#endif
 
 [Setup]
 AppId={{9DF1F443-EA0B-4C75-A4D3-767A7783228E}
-AppName=CopyQ
+AppName={#MyAppName}
 AppVersion={#AppVersion}
-AppVerName=CopyQ {#AppVersion}
-AppPublisher=Lukas Holecek
+AppVerName={#MyAppName} {#AppVersion}
+
+AppCopyright={#MyAppCopyright} {#MyAppCopyrightStartYear}-{#MyAppCopyrightEndYear}
+AppPublisher={#MyAppCopyright}
+
 AppPublisherURL=http://hluk.github.io/CopyQ/
 AppSupportURL=http://hluk.github.io/CopyQ/
 AppUpdatesURL=http://hluk.github.io/CopyQ/
-DefaultDirName={pf}\CopyQ
-DefaultGroupName=CopyQ
+
+VersionInfoDescription={#MyAppName} installer
+VersionInfoProductName={#MyAppName} {#AppVersion}
+VersionInfoVersion={#AppVersionNumeric}
+
+UninstallDisplayName={#MyAppName} {#AppVersion}
+UninstallDisplayIcon={app}\copyq.exe
+
+WizardStyle=Modern
+UsePreviousLanguage=no
+
+DefaultDirName={autopf}\{#MyAppName}
+DefaultGroupName={#MyAppName}
+
+ArchitecturesAllowed=x64
+ArchitecturesInstallIn64BitMode=x64
+
 AllowNoIcons=yes
-LicenseFile={#Source}\LICENSE
+LicenseFile={#Source}\shared\gpl-3.0.rtf
 OutputDir={#Output}
-OutputBaseFilename=copyq-{#AppVersion}-setup
+PrivilegesRequiredOverridesAllowed=dialog
+OutputBaseFilename={#MyAppNameMin}-{#AppVersion}-setup
 Compression=lzma
 SolidCompression=yes
 SetupIconFile={#Source}\src\images\icon.ico
@@ -27,19 +56,13 @@ WizardImageFile=logo.bmp
 WizardSmallImageFile=logo-small.bmp
 CloseApplications=force
 
-VersionInfoDescription=CopyQ installer
-VersionInfoProductName=CopyQ {#AppVersion}
-VersionInfoVersion={#AppVersion}
-UninstallDisplayName=CopyQ {#AppVersion}
-UninstallDisplayIcon={#Root}\copyq.exe
-AppCopyright=(c) Lukas Holecek
-
 [Languages]
 Name: en; MessagesFile: "compiler:Default.isl"
 Name: cz; MessagesFile: "compiler:Languages\Czech.isl"
 Name: de; MessagesFile: "compiler:Languages\German.isl"
 Name: es; MessagesFile: "compiler:Languages\Spanish.isl"
 Name: it; MessagesFile: "compiler:Languages\Italian.isl"
+Name: ko; MessagesFile: "compiler:Languages\Korean.isl"
 
 [CustomMessages]
 en.ProgramFiles=Program Files
@@ -89,6 +112,19 @@ it.PluginSynchronize=Sincronizza elementi disco
 it.PluginTags=Etichette elementi
 it.PluginPinned=Elementi bloccati
 
+ko.ProgramFiles=Program Files
+ko.Translations=번역
+ko.Plugins=플러그인
+ko.PluginText=강조 표시가 있는 텍스트
+ko.PluginImages=이미지
+ko.PluginWeb=웹 페이지
+ko.PluginNotes=노트
+ko.PluginEncrypted=암호화
+ko.PluginFakeVim=FakeVim 편집기
+ko.PluginSynchronize=항목을 디스크에 동기화
+ko.PluginTags=항목 태그
+ko.PluginPinned=고정된 항목
+
 [Types]
 Name: "full"; Description: "{code:GetFullInstallation}"
 Name: "compact"; Description: "{code:GetCompactInstallation}"
@@ -129,14 +165,16 @@ Source: "{#Root}\plugins\*itemtags.dll"; DestDir: "{app}\plugins"; Components: p
 Source: "{#Root}\plugins\*itempinned.dll"; DestDir: "{app}\plugins"; Components: plugins/pinned; Flags: ignoreversion
 
 ; Qt and toolchain
-Source: "{#Root}\bearer\*.dll"; DestDir: "{app}\bearer"; Components: program; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "{#Root}\bearer\*.dll"; DestDir: "{app}\bearer"; Components: program; Flags: ignoreversion recursesubdirs createallsubdirs skipifsourcedoesntexist
 Source: "{#Root}\imageformats\*.dll"; DestDir: "{app}\imageformats"; Components: program; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "{#Root}\platforms\*.dll"; DestDir: "{app}\platforms"; Components: program; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "{#Root}\styles\*.dll"; DestDir: "{app}\styles"; Components: program; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "{#Root}\tls\*.dll"; DestDir: "{app}\tls"; Components: program; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "{#Root}\crypto\*.dll"; DestDir: "{app}\crypto"; Components: program; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "{#Root}\*.dll"; DestDir: "{app}"; Components: program; Flags: ignoreversion
 
 [Icons]
-Name: "{group}\CopyQ"; Filename: "{app}\copyq.exe"
+Name: "{group}\CopyQ"; Filename: "{app}\copyq.exe"; Parameters: "--start-server show"
 Name: "{commondesktop}\CopyQ"; Filename: "{app}\copyq.exe"; Tasks: desktopicon
 Name: "{userstartup}\CopyQ"; Filename: "{app}\copyq.exe"; Tasks: startup
 

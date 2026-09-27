@@ -1,34 +1,20 @@
-/*
-    Copyright (c) 2020, Lukas Holecek <hluk@email.cz>
+// SPDX-License-Identifier: GPL-3.0-or-later
 
-    This file is part of CopyQ.
+#pragma once
 
-    CopyQ is free software: you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation, either version 3 of the License, or
-    (at your option) any later version.
-
-    CopyQ is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
-
-    You should have received a copy of the GNU General Public License
-    along with CopyQ.  If not, see <http://www.gnu.org/licenses/>.
-*/
-
-#ifndef ITEMNOTES_H
-#define ITEMNOTES_H
 
 #include "gui/icons.h"
 #include "item/itemwidgetwrapper.h"
 
+#include <QVariant>
 #include <QWidget>
+#include <QColor>
 
 namespace Ui {
 class ItemNotesSettings;
 }
 
+class QHBoxLayout;
 class QTextEdit;
 class QTimer;
 
@@ -41,12 +27,22 @@ enum NotesPosition {
 class ItemNotes final : public QWidget, public ItemWidgetWrapper
 {
     Q_OBJECT
+    Q_PROPERTY(QColor notesIndicatorColor READ notesIndicatorColor
+               WRITE setNotesIndicatorColor)
+    Q_PROPERTY(int notesIndicatorWidth READ notesIndicatorWidth
+               WRITE setNotesIndicatorWidth)
 
 public:
     ItemNotes(ItemWidget *childItem, const QString &text, const QByteArray &icon,
               NotesPosition notesPosition, bool showToolTip);
 
     void setCurrent(bool current) override;
+
+    QColor notesIndicatorColor() const { return m_indicatorColor; }
+    void setNotesIndicatorColor(const QColor &color) { m_indicatorColor = color; }
+
+    int notesIndicatorWidth() const { return m_indicatorWidth; }
+    void setNotesIndicatorWidth(int width);
 
 protected:
     void updateSize(QSize maximumSize, int idealWidth) override;
@@ -60,9 +56,12 @@ private:
 
     QTextEdit *m_notes;
     QWidget *m_icon;
+    QHBoxLayout *m_labelLayout;
     QTimer *m_timerShowToolTip;
     QString m_toolTipText;
     bool m_isCurrent = false;
+    QColor m_indicatorColor;
+    int m_indicatorWidth = 0;
 };
 
 class ItemNotesLoader final : public QObject, public ItemLoaderInterface
@@ -79,7 +78,7 @@ public:
     QString name() const override { return tr("Notes"); }
     QString author() const override { return QString(); }
     QString description() const override { return tr("Display notes for items."); }
-    QVariant icon() const override { return QVariant(IconPenSquare); }
+    QVariant icon() const override { return QVariant(IconPenToSquare); }
 
     QStringList formatsToSave() const override;
 
@@ -99,5 +98,3 @@ private:
     bool m_showTooltip = false;
     std::unique_ptr<Ui::ItemNotesSettings> ui;
 };
-
-#endif // ITEMNOTES_H

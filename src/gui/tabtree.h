@@ -1,24 +1,7 @@
-/*
-    Copyright (c) 2020, Lukas Holecek <hluk@email.cz>
+// SPDX-License-Identifier: GPL-3.0-or-later
 
-    This file is part of CopyQ.
+#pragma once
 
-    CopyQ is free software: you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation, either version 3 of the License, or
-    (at your option) any later version.
-
-    CopyQ is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
-
-    You should have received a copy of the GNU General Public License
-    along with CopyQ.  If not, see <http://www.gnu.org/licenses/>.
-*/
-
-#ifndef TABTREE_H
-#define TABTREE_H
 
 #include "gui/tabswidgetinterface.h"
 
@@ -60,6 +43,7 @@ public:
     void previousTab() override;
 
     void setCurrentTab(int index) override;
+    void moveTab(int from, int to) override;
 
     void adjustSize() override;
 
@@ -87,7 +71,7 @@ signals:
     void currentTabChanged(int index);
     void tabTreeMenuRequested(const QPoint &pos, const QString &groupPath);
     void tabsMoved(const QString &oldPrefix, const QString &newPrefix, const QList<int> &indexes);
-    void dropItems(const QString &tabName, const QMimeData *data);
+    void dropItems(const QString &tabName, const QMimeData *data, bool *accepted);
 
 protected:
     void contextMenuEvent(QContextMenuEvent *event) override;
@@ -106,8 +90,9 @@ private:
     void requestTabMenu(QPoint itemPosition, QPoint menuPosition);
     void deleteItem(QTreeWidgetItem *item);
 
+    void setTabItemCount(QTreeWidgetItem *item, const QString &itemCount);
+
     QTimer m_timerUpdate;
     QList<QTreeWidgetItem*> m_tabs;
+    QList<QString> m_collapsedPaths;
 };
-
-#endif // TABTREE_H

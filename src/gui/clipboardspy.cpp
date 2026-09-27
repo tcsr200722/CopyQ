@@ -1,21 +1,4 @@
-/*
-    Copyright (c) 2020, Lukas Holecek <hluk@email.cz>
-
-    This file is part of CopyQ.
-
-    CopyQ is free software: you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation, either version 3 of the License, or
-    (at your option) any later version.
-
-    CopyQ is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
-
-    You should have received a copy of the GNU General Public License
-    along with CopyQ.  If not, see <http://www.gnu.org/licenses/>.
-*/
+// SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "clipboardspy.h"
 
@@ -33,23 +16,20 @@ ClipboardSpy::ClipboardSpy(ClipboardMode mode, const QByteArray &owner)
     , m_clipboard(platformNativeInterface()->clipboard())
 {
     m_oldOwnerData = owner.isEmpty() ? currentOwnerData() : owner;
-    connect( m_clipboard.get(), &PlatformClipboard::changed, this,
-        [this](ClipboardMode changedMode) {
-            if (changedMode == m_mode)
-                check();
-        }
-    );
-    m_clipboard->startMonitoring( QStringList(mimeOwner) );
 }
 
 void ClipboardSpy::wait(int ms, int checkIntervalMs)
 {
+    if (m_stopped)
+        return;
+
     if (m_mode == ClipboardMode::Selection && !m_clipboard->isSelectionSupported())
         return;
 
     QEventLoop loop;
     connect( this, &ClipboardSpy::changed, &loop, &QEventLoop::quit );
     connect( this, &ClipboardSpy::stopped, &loop, &QEventLoop::quit );
+    connect( QCoreApplication::instance(), &QCoreApplication::aboutToQuit, &loop, &QEventLoop::quit );
 
     QTimer timerStop;
     if (ms >= 0) {
@@ -60,7 +40,7 @@ void ClipboardSpy::wait(int ms, int checkIntervalMs)
 
     QTimer timerCheck;
     timerCheck.setInterval(checkIntervalMs);
-    connect( &timerCheck, &QTimer::timeout, this, &ClipboardSpy::check );
+    connect( &timerCheck, &QTimer::timeout, this, &ClipboardSpy::emitChangeIfChanged );
     timerCheck.start();
 
     loop.exec();
@@ -68,10 +48,22 @@ void ClipboardSpy::wait(int ms, int checkIntervalMs)
 
 bool ClipboardSpy::setClipboardData(const QVariantMap &data)
 {
+    m_settingClipboard = true;
     m_oldOwnerData = currentOwnerData();
+
+    if (!m_connection) {
+        const auto mode = m_mode == ClipboardMode::Clipboard
+            ? ClipboardModeFlag::Clipboard
+            : ClipboardModeFlag::Selection;
+        m_connection = m_clipboard->createConnection(QStringList(mimeOwner), mode);
+        connect(m_connection.get(), &ClipboardConnection::changed,
+                this, &ClipboardSpy::emitChangeIfChanged, Qt::QueuedConnection);
+    }
+
     m_clipboard->setData(m_mode, data);
     wait();
     m_oldOwnerData = data.value(mimeOwner).toByteArray();
+    m_settingClipboard = false;
     return m_oldOwnerData == currentOwnerData();
 }
 
@@ -82,14 +74,20 @@ QByteArray ClipboardSpy::currentOwnerData() const
 
 void ClipboardSpy::stop()
 {
+    m_stopped = true;
+    m_connection.reset();
     emit stopped();
 }
 
-bool ClipboardSpy::check()
+void ClipboardSpy::emitChangeIfChanged()
 {
-    if (!m_oldOwnerData.isEmpty() && m_oldOwnerData == currentOwnerData())
-        return false;
+    if (m_stopped)
+        return;
 
-    emit changed();
-    return true;
+    const auto newOwner = currentOwnerData();
+    if (m_oldOwnerData != newOwner) {
+        emit changed();
+    } else if (!m_settingClipboard && m_oldOwnerData.isEmpty() && newOwner.isEmpty()) {
+        emit changed();
+    }
 }

@@ -1,21 +1,4 @@
-/*
-    Copyright (c) 2020, Lukas Holecek <hluk@email.cz>
-
-    This file is part of CopyQ.
-
-    CopyQ is free software: you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation, either version 3 of the License, or
-    (at your option) any later version.
-
-    CopyQ is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
-
-    You should have received a copy of the GNU General Public License
-    along with CopyQ.  If not, see <http://www.gnu.org/licenses/>.
-*/
+// SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "commandhelp.h"
 
@@ -196,10 +179,6 @@ QList<CommandHelp> commandHelp()
                .addArg("[" + Scriptable::tr("COMMAND") + "]...")
             << CommandHelp("version, -v, --version",
                            Scriptable::tr("Print version of program and libraries."))
-#ifdef HAS_TESTS
-            << CommandHelp("tests, --tests",
-                           Scriptable::tr("Run application tests (append --help argument for more info)."))
-#endif
             << CommandHelp("--start-server",
                            Scriptable::tr("Start server in background before running a command."))
                .addArg("[" + Scriptable::tr("COMMAND") + "]")

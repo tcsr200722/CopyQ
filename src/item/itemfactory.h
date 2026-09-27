@@ -1,33 +1,14 @@
-/*
-    Copyright (c) 2020, Lukas Holecek <hluk@email.cz>
+// SPDX-License-Identifier: GPL-3.0-or-later
 
-    This file is part of CopyQ.
+#pragma once
 
-    CopyQ is free software: you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation, either version 3 of the License, or
-    (at your option) any later version.
 
-    CopyQ is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
-
-    You should have received a copy of the GNU General Public License
-    along with CopyQ.  If not, see <http://www.gnu.org/licenses/>.
-*/
-
-#ifndef ITEMFACTORY_H
-#define ITEMFACTORY_H
-
-#include "common/command.h"
+#include "common/encryption.h"
 #include "item/itemwidget.h"
 
 #include <QMap>
 #include <QObject>
 #include <QtContainerFwd>
-
-#include <memory>
 
 class ItemLoaderInterface;
 class ItemWidget;
@@ -40,7 +21,14 @@ class QWidget;
 struct Command;
 struct CommandMenu;
 
-using ItemLoaderList = QVector<ItemLoaderPtr>;
+namespace Encryption {
+    class EncryptionKey;
+}
+
+struct ClipboardBrowserShared;
+using ClipboardBrowserSharedPtr = std::shared_ptr<ClipboardBrowserShared>;
+
+using ItemLoaderList = QList<ItemLoaderPtr>;
 
 /**
  * Loads item plugins (loaders) and instantiates ItemWidget objects using appropriate
@@ -49,14 +37,14 @@ using ItemLoaderList = QVector<ItemLoaderPtr>;
 class ItemFactory final : public QObject
 {
     Q_OBJECT
+    Q_PROPERTY(QStringList copyqStats READ copyqStats CONSTANT)
 
 public:
     /**
      * Loads item plugins.
      */
-    explicit ItemFactory(QObject *parent = nullptr);
-
-    ~ItemFactory();
+    explicit ItemFactory(
+        const ClipboardBrowserSharedPtr &sharedData = nullptr, QObject *parent = nullptr);
 
     /**
      * Instantiate ItemWidget using given @a loader if possible.
@@ -89,24 +77,16 @@ public:
      * Method createItem() tries to instantiate ItemWidget with loader in this order.
      *
      * If priority of a loader is not set here, it is sorted after using
-     * ItemLoaderInterface::priotity() after all loader explicitly sorted.
+     * ItemLoaderInterface::priority() after all loader explicitly sorted.
      */
     void setPluginPriority(const QStringList &pluginNames);
-
-    /**
-     * Enable or disable instantiation of ItemWidget objects using @a loader.
-     */
-    void setLoaderEnabled(const ItemLoaderPtr &loader, bool enabled);
-
-    /**
-     * Return true if @a loader is enabled.
-     */
-    bool isLoaderEnabled(const ItemLoaderPtr &loader) const;
 
     /**
      * Return true if no plugins were loaded.
      */
     bool hasLoaders() const { return !m_loaders.isEmpty(); }
+
+    QStringList copyqStats() const;
 
     /**
      * Load items using a plugin.
@@ -118,7 +98,7 @@ public:
      * Initialize tab.
      * @return the first plugin (or nullptr) for which ItemLoaderInterface::initializeTab() returned true
      */
-    ItemSaverPtr initializeTab(const QString &tabName, QAbstractItemModel *model, int maxItems);
+    ItemSaverPtr initializeTab(const QString &tabName, QAbstractItemModel *model, int maxItems) const;
 
     /**
      * Return true only if any plugin (ItemLoaderInterface::matches()) returns true;
@@ -152,9 +132,6 @@ private:
     /** Called if child ItemWidget destroyed. **/
     void loaderChildDestroyed(QObject *obj);
 
-    /** Return enabled plugins with dummy item loader. */
-    ItemLoaderList enabledLoaders(bool enabled = true) const;
-
     /** Calls ItemLoaderInterface::transform() for all plugins in reverse order. */
     ItemWidget *transformItem(ItemWidget *item, const QVariantMap &data);
 
@@ -164,10 +141,8 @@ private:
 
     bool loadItemFactorySettings(const ItemLoaderPtr &loader, QSettings *settings) const;
 
+    ClipboardBrowserSharedPtr m_sharedData;
     ItemLoaderList m_loaders;
     ItemLoaderPtr m_dummyLoader;
-    ItemLoaderList m_disabledLoaders;
     QMap<QObject *, ItemLoaderPtr> m_loaderChildren;
 };
-
-#endif // ITEMFACTORY_H

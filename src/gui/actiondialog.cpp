@@ -1,21 +1,4 @@
-/*
-    Copyright (c) 2020, Lukas Holecek <hluk@email.cz>
-
-    This file is part of CopyQ.
-
-    CopyQ is free software: you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation, either version 3 of the License, or
-    (at your option) any later version.
-
-    CopyQ is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
-
-    You should have received a copy of the GNU General Public License
-    along with CopyQ.  If not, see <http://www.gnu.org/licenses/>.
-*/
+// SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "actiondialog.h"
 #include "ui_actiondialog.h"
@@ -29,16 +12,18 @@
 
 #include <QAbstractButton>
 #include <QFile>
+#include <QLoggingCategory>
 #include <QMessageBox>
 #include <QShortcut>
 
-#include <memory>
-
 namespace {
+
+Q_DECLARE_LOGGING_CATEGORY(logCategory)
+Q_LOGGING_CATEGORY(logCategory, "copyq.actiondialog")
 
 void initFormatComboBox(QComboBox *combo, const QStringList &additionalFormats = QStringList())
 {
-    QStringList formats = QStringList() << QString() << QString(mimeText) << additionalFormats;
+    auto formats = QStringList() << QString() << QString(mimeText) << additionalFormats;
     formats.removeDuplicates();
     combo->clear();
     combo->addItems(formats);
@@ -71,6 +56,9 @@ ActionDialog::ActionDialog(QWidget *parent)
     , m_currentCommandIndex(-1)
 {
     ui->setupUi(this);
+
+    // WORKAROUND for broken initial focus in Qt 6.6 (QTBUG-121514)
+    ui->comboBoxCommands->setFocus();
 
     auto shortcut = new QShortcut(QKeySequence(Qt::ControlModifier | Qt::Key_P), this);
     connect(shortcut, &QShortcut::activated, this, &ActionDialog::previousCommand);
@@ -114,32 +102,45 @@ void ActionDialog::restoreHistory()
 {
     const int maxCount = AppConfig().option<Config::command_history_size>();
     ui->comboBoxCommands->setMaxCount(maxCount + 1);
+    ui->comboBoxCommands->clear();
+    ui->comboBoxCommands->addItem(QString());
+    ui->comboBoxCommands->setCurrentIndex(0);
 
     QFile file( dataFilename() );
-    file.open(QIODevice::ReadOnly);
+    if ( !file.exists() )
+        return;
+
+    if ( !file.open(QIODevice::ReadOnly) ) {
+        qCWarning(logCategory) << "Failed to restore Action dialog history from"
+            << file.fileName() << ":" << file.errorString();
+        return;
+    }
+
     QDataStream in(&file);
     QVariant v;
 
-    ui->comboBoxCommands->clear();
-    ui->comboBoxCommands->addItem(QString());
     while( !in.atEnd() && ui->comboBoxCommands->count() <= maxCount ) {
         in >> v;
         const QVariantMap values = v.value<QVariantMap>();
         const QString cmd = values.value("cmd").toString();
         ui->comboBoxCommands->addItem( commandToLabel(cmd), v );
     }
-    ui->comboBoxCommands->setCurrentIndex(0);
 }
 
 const QString ActionDialog::dataFilename() const
 {
-    return getConfigurationFilePath("_cmds.dat");
+    return stateFilePath("_cmds.dat");
 }
 
 void ActionDialog::saveHistory()
 {
     QFile file( dataFilename() );
-    file.open(QIODevice::WriteOnly);
+    if ( !file.open(QIODevice::WriteOnly) ) {
+        qCWarning(logCategory) << "Failed to save Action dialog history to"
+            << file.fileName() << ":" << file.errorString();
+        return;
+    }
+
     QDataStream out(&file);
 
     for (int i = 1; i < ui->comboBoxCommands->count(); ++i) {
@@ -210,14 +211,6 @@ void ActionDialog::onButtonBoxClicked(QAbstractButton* button)
     case QDialogButtonBox::Apply:
         acceptCommand();
         saveCurrentCommandToHistory();
-        break;
-
-    case QDialogButtonBox::Save:
-        emit saveCommand(command());
-        QMessageBox::information(
-                    this, tr("Command saved"),
-                    tr("Command was saved and can be accessed from item menu.\n"
-                       "You can set up the command in preferences.") );
         break;
 
     case QDialogButtonBox::Cancel:

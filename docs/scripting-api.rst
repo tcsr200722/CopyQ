@@ -6,10 +6,10 @@ Scripting API
 CopyQ provides scripting capabilities to automatically handle clipboard
 changes, organize items, change settings and much more.
 
-Supported language features and base function can be found at `ECMAScript
-Reference <http://doc.qt.io/qt-5/ecmascript.html>`__. The language is mostly
-equivalent to modern JavaScript. Some features may be missing but feel free to
-use for example `JavaScript reference on MDN
+Supported language features and functions can be found at `ECMAScript Reference
+<https://doc.qt.io/qt-6/qtqml-javascript-functionlist.html>`__. The language is
+mostly equivalent to modern JavaScript. Some features may be missing but feel
+free to use for example `JavaScript reference on MDN
 <https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/>`__.
 
 CopyQ-specific features described in this document:
@@ -96,19 +96,35 @@ unlike in GUI, where row numbers start from 1 by default.
 
 .. js:function:: version()
 
-   Returns version string.
+   Returns versions, features and host system information.
 
-   :returns: Version string.
+   :returns: Versions, features and host system information
    :rtype: string
 
-   Example of the version string::
+   Example return value::
 
-       CopyQ Clipboard Manager v4.0.0-19-g93d95a7f
-       Qt: 5.15.2
-       KNotifications: 5.79.0
-       Compiler: GCC
+       CopyQ Clipboard Manager 14.0.0.14-g0e004828
        Arch: x86_64-little_endian-lp64
-       OS: Fedora 33 (Workstation Edition)
+       Audio: miniaudio 0.11.25
+       Compiler: GCC
+       DISPLAY: :0
+       KGuiAddons: 6.24.0
+       KNotifications: 6.24.0
+       KStatusNotifierItem: 6.24.0
+       OS: Fedora Linux 43 (Workstation Edition)
+       QCA: 2.3.10
+       Qt: 6.10.2
+       QtKeychain: 0.15.0
+       WAYLAND_DISPLAY: wayland-0
+       XDG_CURRENT_DESKTOP: KDE
+       XDG_SESSION_DESKTOP: KDE
+       XDG_SESSION_TYPE: wayland
+       has-audio: 1
+       has-encryption: 1
+       has-global-shortcuts: 1
+       has-keychain: 1
+       has-mouse-selection: 1
+       platform: Linux/X11
 
 .. js:function:: help()
 
@@ -128,21 +144,33 @@ unlike in GUI, where row numbers start from 1 by default.
 
    Shows main window.
 
+   This uses the last window position and size which is updated whenever the
+   window is moved or resized.
+
 .. js:function:: /*tab*/ show(tabName)
 
    Shows tab.
+
+   This uses the last window position and size which is updated whenever the
+   window is moved or resized.
 
 .. js:function:: showAt(x, y, [width, height])
 
    Shows main window with given geometry.
 
+   The new window position and size will not be stored for ``show()``.
+
 .. js:function:: /*cursor*/ showAt()
 
    Shows main window under mouse cursor.
 
+   The new window position will not be stored for ``show()``.
+
 .. js:function:: /*tab*/ showAt(x, y, width, height, tabName)
 
    Shows tab with given geometry.
+
+   The new window position and size will not be stored for ``show()``.
 
 .. js:function:: hide()
 
@@ -151,6 +179,9 @@ unlike in GUI, where row numbers start from 1 by default.
 .. js:function:: toggle()
 
    Shows or hides main window.
+
+   This uses the last window position and size which is updated whenever the
+   window is moved or resized.
 
    :returns: ``true`` only if main window is being shown, otherwise ``false``.
    :rtype: bool
@@ -249,7 +280,7 @@ unlike in GUI, where row numbers start from 1 by default.
 
 .. js:function:: selection([mimeType])
 
-   Same as :js:func:`clipboard` for `Linux mouse selection`_.
+   Same as :js:func:`clipboard` for `primary selection`_.
 
    :returns: Selection data.
    :rtype: :js:class:`ByteArray`
@@ -258,14 +289,14 @@ unlike in GUI, where row numbers start from 1 by default.
 
    Returns true only if clipboard contains MIME type.
 
-   :returns: ``true`` if clipboad contans the format, otherwise ``false``.
+   :returns: ``true`` if clipboard contains the format, otherwise ``false``.
    :rtype: bool
 
 .. js:function:: hasSelectionFormat(mimeType)
 
-   Same as :js:func:`hasClipboardFormat` for `Linux mouse selection`_.
+   Same as :js:func:`hasClipboardFormat` for `primary selection`_.
 
-   :returns: ``true`` if selection contans the format, otherwise ``false``.
+   :returns: ``true`` if selection contains the format, otherwise ``false``.
    :rtype: bool
 
 .. js:function:: isClipboard()
@@ -273,7 +304,7 @@ unlike in GUI, where row numbers start from 1 by default.
    Returns true only in automatic command triggered by clipboard change.
 
    This can be used to check if current automatic command was triggered by
-   clipboard and not `Linux mouse selection`_ change.
+   clipboard and not `primary selection`_ change.
 
    :returns: ``true`` if current automatic command is triggered by clipboard
              change, otherwise ``false``.
@@ -322,53 +353,83 @@ unlike in GUI, where row numbers start from 1 by default.
 
 .. js:function:: /*window*/ copy()
 
-   Sends ``Ctrl+C`` to current window.
+   Sends ``Ctrl+C`` to the current application or window to trigger a copy
+   operation.
 
-   :throws Error: Thrown if clipboard doesn't change (clipboard is reset before
-                  sending the shortcut).
+   The function resets the clipboard before sending the shortcut so it can
+   detect changes properly.
+
+   :throws Error: Thrown if the clipboard does not change. This can indicate
+      that sending the shortcut failed, the target current window could not be
+      retrieved, or that nothing valid was selected to copy. In such case, see
+      logs for more details.
 
    Example:
 
    .. code-block:: js
 
        try {
-           copy(arguments)
+           copy()
        } catch (e) {
-           // Coping failed!
-           popup('Coping Failed', e)
+           popup('Copying Failed', e)
            abort()
        }
-       var text = str(clipboard())
+       let text = str(clipboard())
        popup('Copied Text', text)
 
-.. js:function:: copySelection(...)
+.. js:function:: copySelection(text)
 
-   Same as :js:func:`copy` for `Linux mouse selection`_.
+   Sets primary selection plain text.
 
-   There is no ``copySelection()`` without parameters.
+   Equivalent to ``copy(text)`` but for `primary selection`_.
+
+   :throws Error: Thrown if selection fails to be set.
+
+.. js:function:: /*data*/ copySelection(mimeType, data, [mimeType, data]...)
+
+   Sets primary selection data.
+
+   Equivalent to ``copy(mimeType, data, ...)`` but for `primary selection`_.
+
+   :throws Error: Thrown if selection fails to be set.
+
+.. js:function:: /*item*/ copySelection(Item)
+
+   Sets primary selection from an item.
+
+   Equivalent to ``copy(Item)`` but for `primary selection`_.
 
    :throws Error: Thrown if selection fails to be set.
 
 .. js:function:: paste()
 
-   Pastes current clipboard.
+   Sends ``Shift+Insert`` (or ``Ctrl+V``) to the current application or window
+   to trigger a paste operation.
 
-   This is basically only sending ``Shift+Insert`` shortcut to current
-   window.
+   If the regular expression in the option ``window_paste_with_ctrl_v_regex``
+   matches the current window title, the shortcut ``Ctrl+V`` is sent instead of
+   the default ``Shift+Insert``. For example, to override the option so that
+   ``Ctrl+V`` is sent for all windows, call:
+
+   .. code-block:: js
+
+       config('window_paste_with_ctrl_v_regex', '.*')
 
    Correct functionality depends a lot on target application and window
    manager.
 
-   :throws Error: Thrown if paste operation fails.
+   :throws Error: Thrown if paste operation fails. This can indicate that
+      sending the shortcut failed, the target current window could not be
+      retrieved. In such case, see logs for more details.
 
    Example:
 
    .. code-block:: js
 
+       copy(text)
        try {
            paste()
        } catch (e) {
-           // Pasting failed!
            popup('Pasting Failed', e)
            abort()
        }
@@ -479,9 +540,21 @@ unlike in GUI, where row numbers start from 1 by default.
 
 .. js:function:: edit([row|text] ...)
 
-   Edits items in current tab.
+   Edits items in the current tab.
 
    Opens external editor if set, otherwise opens internal editor.
+
+   If row is -1 (or other negative number) edits clipboard instead
+   and creates new item.
+
+.. js:function:: editItem(row, [mimeType, [data]])
+
+   Edits specific format for the item.
+
+   Opens external editor if set, otherwise opens internal editor.
+
+   If row is -1 (or other negative number) edits clipboard instead
+   and creates new item.
 
 .. js:function:: read([mimeType])
 
@@ -544,13 +617,13 @@ unlike in GUI, where row numbers start from 1 by default.
    Runs command for items in current tab.
 
    If rows arguments is specified, ``%1`` in the command will be replaced with
-   concatenated text of the rows.
+   concatenated text of the rows. If a row is negative, the text is taken from
+   the clipboard.
 
    If no rows are specified, ``%1`` in the command will be replaced with
    clipboard text.
 
-   The concatenated text (if rows are defined) or clipboard text is also passed
-   on standard input of the command.
+   The concatenated text is also passed on standard input of the command.
 
 .. js:function:: popup(title, message, [time=8000])
 
@@ -579,6 +652,10 @@ unlike in GUI, where row numbers start from 1 by default.
    -  '.time' - duration of notification in milliseconds (default is -1,
       i.e. waits for mouse click)
    -  '.button' - adds button (three arguments: name, script and data)
+   -  '.urgency' - sets notification urgency if it is supported; value can be:
+      'low', 'normal', 'high', 'critical'
+   -  '.persistent' - enables/disables persistent notification if it is
+      supported; value can be ``true`` or ``false``
 
    Example:
 
@@ -663,7 +740,18 @@ unlike in GUI, where row numbers start from 1 by default.
 
 .. js:function:: info([pathName])
 
-   Returns paths and flags used by the application.
+   Returns diagnostic info: versions, features, platform, environment variables
+   and common paths.
+
+   On Linux, also includes environment variables: ``DISPLAY``,
+   ``WAYLAND_DISPLAY``, ``XDG_CURRENT_DESKTOP``, ``XDG_SESSION_DESKTOP``,
+   ``XDG_SESSION_TYPE``.
+
+   When called without arguments, non-path entries are listed first,
+   followed by paths at the end.
+
+   .. versionchanged:: 17.0.0
+      Added ``state`` path identifier.
 
    :returns: Path for given identifier.
    :rtype: string
@@ -673,7 +761,6 @@ unlike in GUI, where row numbers start from 1 by default.
    .. code-block:: js
 
        info('config')
-
 .. js:function:: eval(script)
 
    Evaluates script and returns result.
@@ -773,9 +860,9 @@ unlike in GUI, where row numbers start from 1 by default.
 
 .. js:function:: setData(mimeType, data)
 
-   Modifies data for :js:func:`data` and new clipboard item.
+   Set data for automatic and display commands, or the current item selection.
 
-   Next automatic command will get updated data.
+   Next automatic command will receive the updated data.
 
    This is also the data used to create new item from clipboard.
 
@@ -802,7 +889,7 @@ unlike in GUI, where row numbers start from 1 by default.
 
 .. js:function:: removeData(mimeType)
 
-   Removes data for :js:func:`data` and new clipboard item.
+   Removes data for automatic and display commands, or the current item selection.
 
 .. js:function:: dataFormats()
 
@@ -824,7 +911,7 @@ unlike in GUI, where row numbers start from 1 by default.
    Returns application logs.
 
    :returns: Application logs.
-   :rtype: string
+   :rtype: ByteArray
 
 .. js:function:: abort()
 
@@ -846,16 +933,14 @@ unlike in GUI, where row numbers start from 1 by default.
 
    Returns tab that was selected when script was executed.
 
-   :returns: Currently selected tab name, empty if called outside the main
-             window context (see `Selected Items`_).
+   :returns: Currently selected tab name (see `Selected Items`_).
    :rtype: string
 
 .. js:function:: selectedItems()
 
    Returns selected rows in current tab.
 
-   :returns: Currently selected rows, empty if called outside the main
-             window context (see `Selected Items`_).
+   :returns: Currently selected rows (see `Selected Items`_).
    :rtype: array of ints
 
 .. js:function:: selectedItemData(index)
@@ -865,8 +950,7 @@ unlike in GUI, where row numbers start from 1 by default.
    The data can empty if the item was removed during execution of the
    script.
 
-   :returns: Currently selected items, empty if called outside the main
-             window context (see `Selected Items`_).
+   :returns: Currently selected items (see `Selected Items`_).
    :rtype: array of :js:class:`Item`
 
 .. js:function:: setSelectedItemData(index, Item)
@@ -888,8 +972,7 @@ unlike in GUI, where row numbers start from 1 by default.
    Some data can be empty if the item was removed during execution of the
    script.
 
-   :returns: Currently selected item data, empty if called outside the main
-             window context (see `Selected Items`_).
+   :returns: Currently selected item data (see `Selected Items`_).
    :rtype: array of :js:class:`Item`
 
 .. js:function:: setSelectedItemsData(Item[])
@@ -908,8 +991,7 @@ unlike in GUI, where row numbers start from 1 by default.
 
    See `Selected Items`_.
 
-   :returns: Current row, ``-1`` if called outside the main
-             window context (see `Selected Items`_).
+   :returns: Current row (see `Selected Items`_).
    :rtype: int
 
 .. js:function:: escapeHtml(text)
@@ -1025,9 +1107,10 @@ unlike in GUI, where row numbers start from 1 by default.
    If argument is function it will be called with array of lines read from
    stdout whenever available.
 
-   :returns: Finished command properties or ``undefined`` if executable was not
-             found or could not be executed.
-   :rtype: :js:class:`FinishedCommand` or ``undefined``
+   An exception is thrown if executable was not found or could not be executed.
+
+   :returns: Finished command properties.
+   :rtype: :js:class:`FinishedCommand`
 
    Example -- create item for each line on stdout:
 
@@ -1038,11 +1121,64 @@ unlike in GUI, where row numbers start from 1 by default.
 
    Returns object for the finished command or ``undefined`` on failure.
 
+.. js:function:: playSound(fileOrObject)
+
+   Plays audio file.
+
+   The argument can be a file path string or an object with ``file`` and
+   optional ``volume`` properties.
+
+   Supports WAV, MP3 and FLAC formats. The function starts playback and
+   returns immediately.
+
+   An exception is thrown if the file doesn't exist or cannot be played.
+
+   Requires the application to be built with audio capabilities. You can verify
+   this with ``info('has-audio')``.
+
+   :param fileOrObject: Path to the audio file, or an object
+       ``{file: 'path', volume: 50}``.
+   :type fileOrObject: string or object
+
+   The ``volume`` property is a percentage (default ``100``). Values above
+   ``100`` amplify the sound; the maximum is ``200``.
+
+   Example --- play a notification sound:
+
+   .. code-block:: js
+
+       playSound('/path/to/notification.wav')
+
+   Example --- play at 50% volume:
+
+   .. code-block:: js
+
+       playSound({file: '/path/to/notification.wav', volume: 50})
+
+
 .. js:function:: String currentWindowTitle()
 
    Returns window title of currently focused window.
 
    :returns: Current window title.
+   :rtype: string
+
+.. js:function:: String currentClipboardOwner()
+
+   Returns name of the current clipboard owner.
+
+   The default implementation returns `currentWindowTitle()`.
+
+   This is used to set `mimeWindowTitle` format for the clipboard data in
+   automatic commands and filtering by window title.
+
+   Depending on the current system, option `update_clipboard_owner_delay_ms`
+   can introduce a delay before any new owner value return by this function is
+   used. The reason is to avoid using an incorrect clipboard owner from the
+   current window title if the real clipboard owner set the clipboard after or
+   just before hiding its window (like with some password managers).
+
+   :returns: Current clipboard owner name.
    :rtype: string
 
 .. js:function:: dialog(...)
@@ -1058,6 +1194,8 @@ unlike in GUI, where row numbers start from 1 by default.
    -  '.style' - Qt style sheet for dialog
    -  '.height', '.width', '.x', '.y' - dialog geometry
    -  '.label' - dialog message (can contain basic HTML)
+   -  '.modal' - set to true to make the dialog modal (to avoid other CopyQ windows to get input focus)
+   -  '.onTop' - set to true for the dialog to stay above other windows
 
    :returns: Value or values from accepted dialog or ``undefined`` if dialog
              was canceled.
@@ -1068,6 +1206,18 @@ unlike in GUI, where row numbers start from 1 by default.
          '.title', 'Command Finished',
          '.label', 'Command <b>successfully</b> finished.'
          )
+
+   Accepting a dialog containing only a question returns ``true``
+   (rejecting/cancelling the dialog returns ``undefined``).
+
+   .. code-block:: js
+
+       const remove = dialog(
+         '.title', 'Remove Items',
+         '.label', 'Do you really want to remove all items?'
+         )
+       if (!remove)
+           abort();
 
    Other arguments are used to get user input.
 
@@ -1185,9 +1335,8 @@ unlike in GUI, where row numbers start from 1 by default.
 
    Returns text representation of current date and time.
 
-   See `Date QML Type
-   <https://doc.qt.io/qt-5/qml-qtqml-date.html#format-strings>`__ for details
-   on formatting date and time.
+   See `Date QML Type <https://doc.qt.io/qt-6/qdatetime.html#toString>`__ for
+   details on formatting date and time.
 
    :returns: Current date and time as string.
    :rtype: string
@@ -1412,7 +1561,8 @@ unlike in GUI, where row numbers start from 1 by default.
 
 .. js:function:: onClipboardChanged()
 
-   Called when clipboard or `Linux mouse selection`_ changes.
+   Called when clipboard or `primary selection`_ changes and is not set by
+   CopyQ, is not marked as hidden nor secret (see the other callbacks).
 
    Default implementation is:
 
@@ -1429,7 +1579,8 @@ unlike in GUI, where row numbers start from 1 by default.
 
 .. js:function:: onOwnClipboardChanged()
 
-   Called when clipboard or `Linux mouse selection`_ changes by a CopyQ instance.
+   Called when clipboard or `primary selection`_ is set by CopyQ and is not
+   marked as hidden nor secret (see the other callbacks).
 
    Owned clipboard data contains :js:data:`mimeOwner` format.
 
@@ -1437,15 +1588,31 @@ unlike in GUI, where row numbers start from 1 by default.
 
 .. js:function:: onHiddenClipboardChanged()
 
-   Called when hidden clipboard or `Linux mouse selection`_ changes.
+   Called when clipboard or `primary selection`_ changes and is marked as
+   hidden but not secret (see the other callbacks).
 
    Hidden clipboard data contains :js:data:`mimeHidden` format set to ``1``.
 
    Default implementation calls :js:func:`updateClipboardData`.
 
+.. js:function:: onSecretClipboardChanged()
+
+   Called if the clipboard or `primary selection`_ changes and contains a
+   password or other secret (for example, copied from clipboard manager).
+
+   The default implementation clears all data, so they are not accessible using
+   :js:func:`data` and :js:func:`dataFormats`, except :js:data:`mimeSecret`,
+   and calls :js:func:`updateClipboardData`.
+
+   **Be careful overriding** this function (via a Script command). Calling
+   `onClipboardChanged()` without clearing the data and without any further
+   checks can cause storing and processing secrets from password managers. On
+   the other hand, it can help to get access to the data copied, for example
+   from a web browser in private mode.
+
 .. js:function:: onClipboardUnchanged()
 
-   Called when clipboard or `Linux mouse selection`_ changes but data remained the same.
+   Called when clipboard or `primary selection`_ changes but data remained the same.
 
    Default implementation does nothing.
 
@@ -1507,7 +1674,7 @@ unlike in GUI, where row numbers start from 1 by default.
 
 .. js:function:: synchronizeToSelection(text)
 
-   Synchronize current data from clipboard to `Linux mouse selection`_.
+   Synchronize current data from clipboard to `primary selection`_.
 
    Called automatically from clipboard monitor process if option
    ``copy_clipboard`` is enabled.
@@ -1516,12 +1683,34 @@ unlike in GUI, where row numbers start from 1 by default.
 
 .. js:function:: synchronizeFromSelection(text)
 
-   Synchronize current data from `Linux mouse selection`_ to clipboard.
+   Synchronize current data from `primary selection`_ to clipboard.
 
    Called automatically from clipboard monitor process if option
    ``copy_selection`` is enabled.
 
    Default implementation calls :js:func:`provideClipboard`.
+
+.. js:function:: provideClipboard()
+
+   Starts a process provides a data for clipboard.
+
+   The data can be set using :js:func:`setData`.
+
+   The script must be started with ``--clipboard-access`` command line flag.
+
+.. js:function:: provideSelection()
+
+   Starts a process that provides a data for `primary selection`_.
+
+   The data can be set using :js:func:`setData`.
+
+   The script must be started with ``--clipboard-access`` command line flag.
+
+.. js:function:: monitorClipboard()
+
+   Starts a clipboard monitor process.
+
+   The script must be started with ``--clipboard-access`` command line flag.
 
 .. js:function:: clipboardFormatsToSave()
 
@@ -1530,7 +1719,7 @@ unlike in GUI, where row numbers start from 1 by default.
    :returns: Formats to get and save automatically from clipboard.
    :rtype: array of strings
 
-   Override the funtion, for example, to save only plain text:
+   Override the function, for example, to save only plain text:
 
    .. code-block:: js
 
@@ -1583,11 +1772,80 @@ unlike in GUI, where row numbers start from 1 by default.
    :returns: Style identifiers.
    :rtype: array of strings
 
-   To change or update style use::
+   To change or update style use:
 
    .. code-block:: js
 
        config("style", styleName)
+
+.. js:function:: stats()
+
+   Get runtime diagnostics and statistics about the application state.
+
+   Reports QObject tree class/name counts, clipboard model row counts
+   and data sizes, item data directory size on disk, tab load state,
+   running actions, command counts by type, loaded plugins with
+   enabled/disabled state, log file sizes, and process memory usage.
+
+   :returns: Multi-line string with statistics including:
+      ``#ObjectName: COUNT`` for QObject instances with object name,
+      ``/Path/To#The/#Object: COUNT`` for QObject instances with specific path,
+      ``TYPE: COUNT`` for QObject instances of specific type/class,
+      ``MODEL path: rows=N, dataSize=B (human)`` for item models,
+      ``DATA_DIR path: size=B (human)`` for the item data directory,
+      ``TABS: total=N, loaded=N`` for tab load state,
+      ``ACTION description | pid=P rss=B (human), ...`` for each running action with per-sub-process memory,
+      ``COMMANDS: automatic=N, display=N, menu=N, tray_menu=N, script=N`` for command counts,
+      ``PLUGIN id: enabled/disabled`` for each loaded plugin,
+      ``LOG_FILES: count=N, size=B (human)`` for log file total size,
+      ``MEMORY: rss=B (human)`` for process resident memory (platform-dependent).
+   :rtype: string
+
+.. js:function:: onItemsAdded()
+
+   Called when items are added to a tab.
+
+   The target tab is returned by `selectedTab()`.
+
+   The new items can be accessed with `selectedItemsData()`,
+   `selectedItemData()`, `selectedItems()` and `ItemSelection().current()`.
+
+.. js:function:: onItemsRemoved()
+
+   Called when items are being removed from a tab.
+
+   The target tab is returned by `selectedTab()`.
+
+   The items scheduled for removal can be accessed with `selectedItemsData()`,
+   `selectedItemData()`, `selectedItems()` and `ItemSelection().current()`.
+
+   If the exit code is non-zero (for example `fail()` is called), items will
+   not be removed. But this can also cause a new items not to be added if the
+   tab is full.
+
+.. js:function:: onItemsChanged()
+
+   Called when data in items change.
+
+   The target tab is returned by `selectedTab()`.
+
+   The modified items can be accessed with `selectedItemsData()`,
+   `selectedItemData()`, `selectedItems()` and `ItemSelection().current()`.
+
+.. js:function:: onTabSelected()
+
+   Called when another tab is opened.
+
+   The newly selected tab is returned by `selectedTab()`.
+
+   The changed items can be accessed with `selectedItemsData()`,
+   `selectedItemData()`, `selectedItems()` and `ItemSelection().current()`.
+
+.. js:function:: onItemsLoaded()
+
+   Called when all items are loaded into a tab.
+
+   The target tab is returned by `selectedTab()`.
 
 Types
 -----
@@ -1596,7 +1854,7 @@ Types
 
    Wrapper for QByteArray Qt class.
 
-   See `QByteArray <http://doc.qt.io/qt-5/qbytearray.html>`__.
+   See `QByteArray <http://doc.qt.io/qt-6/qbytearray.html>`__.
 
    ``ByteArray`` is used to store all item data (image data, HTML and even
    plain text).
@@ -1613,7 +1871,7 @@ Types
 
    Wrapper for QFile Qt class.
 
-   See `QFile <http://doc.qt.io/qt-5/qfile.html>`__.
+   See `QFile <http://doc.qt.io/qt-6/qfile.html>`__.
 
    To open file in different modes use:
 
@@ -1652,13 +1910,13 @@ Types
 
    Use forward slash as path separator, for example "D:/Documents/".
 
-   See `QDir <http://doc.qt.io/qt-5/qdir.html>`__.
+   See `QDir <http://doc.qt.io/qt-6/qdir.html>`__.
 
 .. js:class:: TemporaryFile
 
    Wrapper for QTemporaryFile Qt class.
 
-   See `QTemporaryFile <https://doc.qt.io/qt-5/qtemporaryfile.html>`__.
+   See `QTemporaryFile <https://doc.qt.io/qt-6/qtemporaryfile.html>`__.
 
    .. code-block:: js
 
@@ -1668,6 +1926,50 @@ Types
        popup('New temporary file', f.fileName())
 
    To open file in different modes, use same open methods as for `File`.
+
+.. js:class:: Settings
+
+   Reads and writes INI configuration files. Wrapper for QSettings Qt class.
+
+   See `QSettings <https://doc.qt.io/qt-6/qsettings.html>`__.
+
+   .. code-block:: js
+
+       // Open INI file
+       var configPath = Dir().homePath() + '/copyq.ini'
+       var settings = new Settings(configPath)
+
+       // Save an option
+       settings.setValue('option1', 'test')
+
+       // Store changes to the config file now instead of at the end of
+       // executing the script
+       settings.sync()
+
+       // Read the option value
+       var value = settings.value('option1')
+
+   Working with arrays:
+
+   .. code-block:: js
+
+       // Write array
+       var settings = new Settings(configPath)
+       settings.beginWriteArray('array1')
+       settings.setArrayIndex(0)
+       settings.setValue('some_option', 1)
+       settings.setArrayIndex(1)
+       settings.setValue('some_option', 2)
+       settings.endArray()
+       settings.sync()
+
+       // Read array
+       var settings = new Settings(configPath)
+       const arraySize = settings.beginReadArray('array1')
+       for (var i = 0; i < arraySize; i++) {
+           settings.setArrayIndex(i);
+           print('Index ' + i + ': ' + settings.value('some_option') + '\n')
+       }
 
 .. js:class:: Item
 
@@ -1716,7 +2018,7 @@ Types
        for (var index = 0; index < sel.length; ++index) {
            var item = sel.itemAtIndex(index);
            item[mimeItemNotes] = 'Contains needle';
-           sel.setItemAtIndex(item);
+           sel.setItemAtIndex(index, item);
        }
 
    Example - selection with new items only:
@@ -1728,6 +2030,16 @@ Types
        add("New Item 2")
        sel.invert()
        sel.items();
+
+   Example - sort items alphabetically:
+
+   .. code-block:: js
+
+       var sel = ItemSelection().selectAll();
+       const texts = sel.itemsFormat(mimeText);
+       sel.sort(function(i,j){
+           return texts[i] < texts[j];
+       });
 
    .. js:attribute:: tab
 
@@ -1812,6 +2124,19 @@ Types
        :returns: self
        :rtype: ItemSelection
 
+   .. js:method:: sort(comparisonFunction)
+
+       Sort items with a comparison function.
+
+       The comparison function takes two arguments, indexes to the selection,
+       and returns true only if the item in the selection under the first index
+       should be sorted above the item under the second index.
+
+       Items will be reordered in the tab and in the selection object.
+
+       :returns: self
+       :rtype: ItemSelection
+
    .. js:method:: copy()
 
        Clone the selection object.
@@ -1884,6 +2209,45 @@ Types
 
        Exit code
 
+.. js:class:: NetworkRequest
+
+   Make HTTP requests.
+
+   Example:
+
+   .. code-block:: js
+
+       let req = NetworkRequest();
+
+       // allow redirects
+       req.maxRedirects = 5;
+
+       // set request headers
+       req.headers = {
+          'User-Agent': req.headers['User-Agent'],
+          'Accept': 'application/json',
+       };
+
+       // create JSON data
+       const data = JSON.stringify({text: 'Hello, **world**!'});
+
+       // send POST request
+       const reply = req.request(
+           'POST', 'https://api.github.com/markdown', data)
+
+       // the request is synchronous and may not be finished
+       // until a property is called (like reply.data or reply.status)
+       if (!reply.finished) { serverLog('Processing...'); }
+       print(reply.data);
+
+   .. js:attribute:: headers
+
+       Object with HTTP headers
+
+   .. js:attribute:: maxRedirects
+
+       Maximum number of redirects to follow (default is 0)
+
 .. js:class:: NetworkReply
 
    Received network reply object.
@@ -1912,6 +2276,11 @@ Types
 
        True only if request has been completed, false only for unfinished
        asynchronous requests
+
+   .. js:attribute:: url
+
+       URL of the final request (may be different from the original if
+       redirects are enabled)
 
 .. js:class:: Command
 
@@ -1972,48 +2341,48 @@ These MIME types values are assigned to global variables prefixed with
 
    Content for following types is UTF-8 encoded.
 
-.. js:data:: mimeText (text/plain)
+.. js:data:: mimeText
 
-   Data contains plain text content.
+   Data contains plain text content. Value: 'text/plain'.
 
-.. js:data:: mimeHtml (text/html)
+.. js:data:: mimeHtml
 
-   Data contains HTML content.
+   Data contains HTML content. Value: 'text/html'.
 
-.. js:data:: mimeUriList (text/uri-list)
+.. js:data:: mimeUriList
 
-   Data contains list of links to files, web pages etc.
+   Data contains list of links to files, web pages etc. Value: 'text/uri-list'.
 
-.. js:data:: mimeWindowTitle (application/x-copyq-owner-window-title)
+.. js:data:: mimeWindowTitle
 
-   Current window title for copied clipboard.
+   Current window title for copied clipboard. Value: 'application/x-copyq-owner-window-title'.
 
-.. js:data:: mimeItems (application/x-copyq-item)
+.. js:data:: mimeItems
 
-   Serialized items.
+   Serialized items. Value: 'application/x-copyq-item'.
 
-.. js:data:: mimeItemNotes (application/x-copyq-item-notes)
+.. js:data:: mimeItemNotes
 
-   Data contains notes for item.
+   Data contains notes for item. Value: 'application/x-copyq-item-notes'.
 
-.. js:data:: mimeIcon (application/x-copyq-item-icon)
+.. js:data:: mimeIcon
 
-   Data contains icon for item.
+   Data contains icon for item. Value: 'application/x-copyq-item-icon'.
 
-.. js:data:: mimeOwner (application/x-copyq-owner)
+.. js:data:: mimeOwner
 
-   If available, the clipboard was set from CopyQ (from script or copied items).
+   If available, the clipboard was set from CopyQ (from script or copied items). Value: 'application/x-copyq-owner'.
 
    Such clipboard is ignored in CopyQ, i.e. it won't be stored in clipboard
    tab and automatic commands won't be executed on it.
 
-.. js:data:: mimeClipboardMode (application/x-copyq-clipboard-mode)
+.. js:data:: mimeClipboardMode
 
-   Contains ``selection`` if data is from `Linux mouse selection`_.
+   Contains ``selection`` if data is from `primary selection`_. Value: 'application/x-copyq-clipboard-mode'.
 
-.. js:data:: mimeCurrentTab (application/x-copyq-current-tab)
+.. js:data:: mimeCurrentTab
 
-   Current tab name when invoking command from main window.
+   Current tab name when invoking command from main window. Value: 'application/x-copyq-current-tab'.
 
    Following command print the tab name when invoked from main window:
 
@@ -2022,17 +2391,17 @@ These MIME types values are assigned to global variables prefixed with
        copyq data application/x-copyq-current-tab
        copyq selectedTab
 
-.. js:data:: mimeSelectedItems (application/x-copyq-selected-items)
+.. js:data:: mimeSelectedItems
 
-   Selected items when invoking command from main window.
+   Selected items when invoking command from main window. Value: 'application/x-copyq-selected-items'.
 
-.. js:data:: mimeCurrentItem (application/x-copyq-current-item)
+.. js:data:: mimeCurrentItem
 
-   Current item when invoking command from main window.
+   Current item when invoking command from main window. Value: 'application/x-copyq-current-item'.
 
-.. js:data:: mimeHidden (application/x-copyq-hidden)
+.. js:data:: mimeHidden
 
-   If set to ``1``, the clipboard or item content will be hidden in GUI.
+   If set to ``1``, the clipboard or item content will be hidden in GUI. Value: 'application/x-copyq-hidden'.
 
    This won't hide notes and tags.
 
@@ -2042,9 +2411,13 @@ These MIME types values are assigned to global variables prefixed with
 
        copyq copy application/x-copyq-hidden 1 plain/text "This is secret"
 
-.. js:data:: mimeShortcut (application/x-copyq-shortcut)
+.. js:data:: mimeSecret
 
-   Application or global shortcut which activated the command.
+   If set to ``1``, the clipboard contains a password or other secret (for example, copied from clipboard manager).
+
+.. js:data:: mimeShortcut
+
+   Application or global shortcut which activated the command. Value: 'application/x-copyq-shortcut'.
 
    ::
 
@@ -2052,9 +2425,9 @@ These MIME types values are assigned to global variables prefixed with
        var shortcut = data(mimeShortcut)
        popup("Shortcut Pressed", shortcut)
 
-.. js:data:: mimeColor (application/x-copyq-color)
+.. js:data:: mimeColor
 
-   Item color (same as the one used by themes).
+   Item color (same as the one used by themes). Value: 'application/x-copyq-color'.
 
    Examples::
 
@@ -2062,9 +2435,9 @@ These MIME types values are assigned to global variables prefixed with
        rgba(255,255,0,0.5)
        bg - #000099
 
-.. js:data:: mimeOutputTab (application/x-copyq-output-tab)
+.. js:data:: mimeOutputTab
 
-   Name of the tab where to store new item.
+   Name of the tab where to store new item. Value: 'application/x-copyq-output-tab'.
 
    The clipboard data will be stored in tab with this name after all
    automatic commands are run.
@@ -2079,27 +2452,88 @@ These MIME types values are assigned to global variables prefixed with
 
    Valid only in automatic commands.
 
+.. js:data:: mimeDisplayItemInMenu
+
+   Indicates if display commands run for a menu. Value: 'application/x-copyq-display-item-in-menu'.
+
+   Set to "1" for display commands if the item data is related to a menu item
+   instead of an item list.
+
 Selected Items
 --------------
 
-Functions that get and set data for selected items and current tab are
-only available if called from Action dialog or from a command which is
-in menu.
+The internal state for currently evaluated script/command stores references
+(not rows or item data) to the current and selected items and it do not change
+after the state is retrieved from GUI.
 
-Selected items are indexed from top to bottom as they appeared in the
-current tab at the time the command is executed.
+The state is retrieved before the script/command starts if it is invoked from
+the application with a shortcut, from menu, toolbar or the Action dialog.
+Otherwise, the state is retrieved when needed (for example the first
+``selectedItems()`` call) for scripts/commands run externally (for example from
+command line or from automatic commands on clipboard content change).
 
-Linux Mouse Selection
----------------------
+If a selected or current item is moved, script functions will return the new
+rows. For example ``selectedItems()`` returning ``[0,1]`` will return ``[1,0]``
+after the items are swapped. Same goes for selected item data.
 
-In many application on Linux, if you select a text with mouse, it's possible to
-paste it with middle mouse button.
+If a selected or current item is removed, their references in the internal
+state are invalidated. These references will return -1 for row and empty object
+for item data. For example ``selectedItems()`` returning ``[0,1]`` will return
+``[0,-1]`` after the item on the second row is removed.
 
-The text is stored separately from normal clipboard content.
+If tab is renamed, all references to current and selected items are invalidated
+because the tab data need to be initiated again.
 
-On non-Linux system, functions that support mouse selection will do nothing
+Primary Selection
+-----------------
+
+On many Linux and BSD desktop environments, selecting text with the mouse
+places it in the *primary selection*, which can be pasted with a middle mouse
+button click. This is separate from the regular clipboard used by copy/paste
+shortcuts.
+
+CopyQ supports reading and writing the primary selection on platforms that
+provide it (X11 and Wayland). On Wayland, support depends on the compositor
+and the `KGuiAddons <https://invent.kde.org/frameworks/kguiaddons>`_ library;
+notably, GNOME does not support it natively, but CopyQ 14.0.0 and later work
+around this via the bundled *CopyQ Clipboard Monitor* GNOME extension.
+
+On unsupported platforms, functions that use the primary selection do nothing
 (for example :js:func:`copySelection`) or return ``undefined`` (in case of
 :js:func:`selection`).
+
+CopyQ can synchronize the clipboard with the primary selection. This can be
+enabled in Preferences on the General tab under *Clipboard Manipulation*, or
+from the command line:
+
+.. code-block:: js
+
+   config('copy_clipboard', 'true')  // clipboard to primary selection
+   config('copy_selection', 'true')  // primary selection to clipboard
+
+For synchronization, CopyQ runs a helper process (for example
+``copyq --clipboard-access synchronizeToSelection``). Running helpers can be
+inspected from *File — Process Manager*.
+
+Custom automatic commands run on primary selection changes by default. This
+can be disabled in the *Clipboard Manipulation* section or from the command
+line:
+
+.. code-block:: js
+
+   config('run_selection', 'false')
+
+CopyQ can also store primary selection data automatically. Enable it in the
+*Clipboard Manipulation* section or from the command line:
+
+.. code-block:: js
+
+   config('check_selection', 'true')
+
+See also:
+
+- `QClipboard — Notes for X11 Users <https://doc.qt.io/qt-6/qclipboard.html#notes-for-x11-users>`_
+- `freedesktop.org Clipboards Wiki <https://www.freedesktop.org/wiki/Specifications/ClipboardsWiki/>`_
 
 Plugins
 -------
@@ -2187,4 +2621,3 @@ Use ``plugins`` object to access functionality of plugins.
 .. js:data:: plugins.itempinned.mimePinned (application/x-copyq-item-pinned)
 
    Presence of the format in an item indicates that it is pinned.
-

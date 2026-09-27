@@ -1,28 +1,9 @@
-/*
-    Copyright (c) 2020, Lukas Holecek <hluk@email.cz>
+// SPDX-License-Identifier: GPL-3.0-or-later
 
-    This file is part of CopyQ.
+#pragma once
 
-    CopyQ is free software: you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation, either version 3 of the License, or
-    (at your option) any later version.
 
-    CopyQ is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
-
-    You should have received a copy of the GNU General Public License
-    along with CopyQ.  If not, see <http://www.gnu.org/licenses/>.
-*/
-
-#ifndef ICONFACTORY_H
-#define ICONFACTORY_H
-
-#include <QColor>
-#include <QString>
-
+class QColor;
 class QIcon;
 class QPixmap;
 class QPainter;
@@ -37,7 +18,9 @@ QIcon getIcon(const QVariant &iconOrIconId);
 
 QIcon getIconFromResources(const QString &iconName);
 
-QIcon iconFromFile(const QString &fileName, const QString &tag = QString(), const QColor &color = QColor());
+QIcon iconFromFile(const QString &fileName, const QString &tag, const QColor &color);
+QIcon iconFromFile(const QString &fileName, const QString &tag);
+QIcon iconFromFile(const QString &fileName);
 
 unsigned short toIconId(const QString &fileNameOrId);
 
@@ -65,5 +48,3 @@ QString sessionIconTag();
 QColor sessionIconTagColor();
 
 void setUseSystemIcons(bool useSystemIcons);
-
-#endif // ICONFACTORY_H

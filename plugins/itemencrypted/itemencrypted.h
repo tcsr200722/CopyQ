@@ -1,29 +1,13 @@
-/*
-    Copyright (c) 2020, Lukas Holecek <hluk@email.cz>
+// SPDX-License-Identifier: GPL-3.0-or-later
 
-    This file is part of CopyQ.
+#pragma once
 
-    CopyQ is free software: you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation, either version 3 of the License, or
-    (at your option) any later version.
-
-    CopyQ is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
-
-    You should have received a copy of the GNU General Public License
-    along with CopyQ.  If not, see <http://www.gnu.org/licenses/>.
-*/
-
-#ifndef ITEMENCRYPTED_H
-#define ITEMENCRYPTED_H
 
 #include "item/itemwidget.h"
 #include "gui/icons.h"
 
 #include <QProcess>
+#include <QVariant>
 #include <QWidget>
 
 #include <memory>
@@ -116,8 +100,6 @@ public:
 
     ItemSaverPtr initializeTab(const QString &, QAbstractItemModel *model, int maxItems) override;
 
-    QObject *tests(const TestInterfacePtr &test) const override;
-
     const QObject *signaler() const override { return this; }
 
     ItemScriptable *scriptableObject() override;
@@ -158,5 +140,3 @@ private:
     mutable GpgProcessStatus m_gpgProcessStatus;
     QProcess *m_gpgProcess;
 };
-
-#endif // ITEMENCRYPTED_H

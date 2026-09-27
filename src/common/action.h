@@ -1,38 +1,13 @@
-/*
-    Copyright (c) 2020, Lukas Holecek <hluk@email.cz>
+// SPDX-License-Identifier: GPL-3.0-or-later
 
-    This file is part of CopyQ.
+#pragma once
 
-    CopyQ is free software: you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation, either version 3 of the License, or
-    (at your option) any later version.
 
-    CopyQ is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
-
-    You should have received a copy of the GNU General Public License
-    along with CopyQ.  If not, see <http://www.gnu.org/licenses/>.
-*/
-
-#ifndef ACTION_H
-#define ACTION_H
-
-#include <QModelIndex>
-#include <QProcess>
 #include <QStringList>
 #include <QVariantMap>
 
-#include <vector>
-
 class QAction;
-
-/**
- * Terminate process or kill if it takes too long.
- */
-void terminateProcess(QProcess *p);
+class QProcess;
 
 /**
  * Execute external program and emits signals
@@ -85,6 +60,8 @@ public:
 
     bool isRunning() const;
 
+    QList<qint64> processIds() const;
+
     /** Set human-readable name for action. */
     void setName(const QString &actionName) { m_name = actionName; }
 
@@ -109,6 +86,12 @@ public:
     /** Terminate (kill) process. */
     void terminate();
 
+    /** Async: send SIGTERM to child processes, no blocking wait. */
+    void requestTerminate();
+
+    /** Async: send SIGKILL to still-running child processes, no blocking wait. */
+    void requestKill();
+
 signals:
     /** Emitted when finished. */
     void actionFinished(Action *act);
@@ -118,7 +101,7 @@ signals:
     void actionOutput(const QByteArray &output);
 
 private:
-    void onSubProcessError(QProcess::ProcessError error);
+    void onSubProcessError(int error);
     void onSubProcessStarted();
     void onSubProcessFinished();
     void onSubProcessOutput();
@@ -139,12 +122,10 @@ private:
     int m_currentLine;
     QString m_name;
     QVariantMap m_data;
-    std::vector<QProcess*> m_processes;
+    QList<QProcess*> m_processes;
 
     int m_exitCode;
     QString m_errorString;
 
     int m_id = -1;
 };
-
-#endif // ACTION_H

@@ -1,42 +1,42 @@
-/*
-    Copyright (c) 2020, Lukas Holecek <hluk@email.cz>
+// SPDX-License-Identifier: GPL-3.0-or-later
 
-    This file is part of CopyQ.
+#pragma once
 
-    CopyQ is free software: you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation, either version 3 of the License, or
-    (at your option) any later version.
-
-    CopyQ is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
-
-    You should have received a copy of the GNU General Public License
-    along with CopyQ.  If not, see <http://www.gnu.org/licenses/>.
-*/
-
-#ifndef ITEMPINNED_H
-#define ITEMPINNED_H
 
 #include "gui/icons.h"
 #include "item/itemwidgetwrapper.h"
 #include "item/itemsaverwrapper.h"
 
+#include <QPointer>
+#include <QVariant>
 #include <QWidget>
+#include <QColor>
 
 class ItemPinned final : public QWidget, public ItemWidgetWrapper
 {
     Q_OBJECT
+    Q_PROPERTY(QColor pinnedIndicatorColor READ pinnedIndicatorColor
+               WRITE setPinnedIndicatorColor)
+    Q_PROPERTY(int pinnedIndicatorWidth READ pinnedIndicatorWidth
+               WRITE setPinnedIndicatorWidth)
 
 public:
     explicit ItemPinned(ItemWidget *childItem);
+
+    QColor pinnedIndicatorColor() const { return m_indicatorColor; }
+    void setPinnedIndicatorColor(const QColor &color) { m_indicatorColor = color; }
+
+    int pinnedIndicatorWidth() const { return m_indicatorWidth; }
+    void setPinnedIndicatorWidth(int width) { m_indicatorWidth = width; }
 
 protected:
     void paintEvent(QPaintEvent *paintEvent) override;
 
     void updateSize(QSize maximumSize, int idealWidth) override;
+
+private:
+    QColor m_indicatorColor;
+    int m_indicatorWidth = 6;
 };
 
 class ItemPinnedScriptable final : public ItemScriptable
@@ -80,7 +80,7 @@ private:
 
     QPointer<QAbstractItemModel> m_model;
 
-    // Last pinned row in list (improves performace of updates).
+    // Last pinned row in list (improves performance of updates).
     int m_lastPinned = -1;
 };
 
@@ -111,8 +111,6 @@ public:
 
     ItemSaverPtr transformSaver(const ItemSaverPtr &saver, QAbstractItemModel *model) override;
 
-    QObject *tests(const TestInterfacePtr &test) const override;
-
     const QObject *signaler() const override { return this; }
 
     ItemScriptable *scriptableObject() override;
@@ -122,5 +120,3 @@ public:
 private:
     ItemLoaderPtr m_transformedLoader;
 };
-
-#endif // ITEMPINNED_H

@@ -1,26 +1,10 @@
-/*
-    Copyright (c) 2020, Lukas Holecek <hluk@email.cz>
+// SPDX-License-Identifier: GPL-3.0-or-later
+#pragma once
 
-    This file is part of CopyQ.
+#include <QtGlobal>
 
-    CopyQ is free software: you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation, either version 3 of the License, or
-    (at your option) any later version.
-
-    CopyQ is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
-
-    You should have received a copy of the GNU General Public License
-    along with CopyQ.  If not, see <http://www.gnu.org/licenses/>.
-*/
-
-#ifndef MACMIME_H
-#define MACMIME_H
-
-#include <QMacPasteboardMime>
+#include <QUtiMimeConverter>
+using CopyqPasteboardMimeBase = QUtiMimeConverter;
 
 /**
  * Class for doing lossless conversions between OS X UTIs and "normal" mimeTypes.
@@ -36,16 +20,10 @@
  * - https://www.qt.gitorious.org/qt/qt/source/src/gui/kernel/qclipboard_mac.cpp
  */
 
-class CopyQPasteboardMime final : public QMacPasteboardMime {
+class CopyQPasteboardMime final : public CopyqPasteboardMimeBase {
 public:
-    CopyQPasteboardMime() : QMacPasteboardMime(MIME_ALL) { }
-    QString convertorName() override;
-
-    QString flavorFor(const QString &mime) override;
-    QString mimeFor(QString flav) override;
-    bool canConvert(const QString &mime, QString flav) override;
-    QVariant convertToMime(const QString &mime, QList<QByteArray> data, QString flav) override;
-    QList<QByteArray> convertFromMime(const QString &mime, QVariant data, QString flav) override;
+    QString mimeForUti(const QString &uti) const override;
+    QString utiForMime(const QString &mime) const override;
+    QVariant convertToMime(const QString &mime, const QList<QByteArray> &data, const QString &uti) const override;
+    QList<QByteArray> convertFromMime(const QString &mime, const QVariant &data, const QString &uti) const override;
 };
-
-#endif // MACMIME_H

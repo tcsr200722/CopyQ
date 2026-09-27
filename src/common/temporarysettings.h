@@ -1,26 +1,10 @@
-/*
-    Copyright (c) 2020, Lukas Holecek <hluk@email.cz>
+// SPDX-License-Identifier: GPL-3.0-or-later
 
-    This file is part of CopyQ.
+#pragma once
 
-    CopyQ is free software: you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation, either version 3 of the License, or
-    (at your option) any later version.
 
-    CopyQ is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
-
-    You should have received a copy of the GNU General Public License
-    along with CopyQ.  If not, see <http://www.gnu.org/licenses/>.
-*/
-
-#ifndef TEMPORARYSETTINGS_H
-#define TEMPORARYSETTINGS_H
-
-#include <QSettings>
+class QByteArray;
+class QSettings;
 
 /**
  * Temporary ini settings which is removed after destroyed.
@@ -31,9 +15,9 @@ class TemporarySettings final
 {
 public:
     /// Creates temporary settings file.
-    explicit TemporarySettings(const QByteArray &content = QByteArray());
+    explicit TemporarySettings(const QByteArray &content);
 
-    /// Destroys undelying settings and removes settings file.
+    /// Destroys underlying settings and removes settings file.
     ~TemporarySettings();
 
     /// Returns underlying settings.
@@ -48,6 +32,3 @@ public:
 private:
     QSettings *m_settings;
 };
-
-
-#endif // TEMPORARYSETTINGS_H

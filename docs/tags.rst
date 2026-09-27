@@ -33,7 +33,7 @@ E.g. ``.*`` (any tag), ``Important: .*`` (match prefix),
 
 -  "Style Sheet"
 
-Simple style sheet (https://doc.qt.io/qt-5/stylesheet-reference.html).
+Simple style sheet (https://doc.qt.io/qt-6/stylesheet-reference.html).
 
 E.g. ``border: 1px solid white; border-radius: 3px; font-size: 7pt``.
 
@@ -41,6 +41,9 @@ E.g. ``border: 1px solid white; border-radius: 3px; font-size: 7pt``.
 
 -  "Icon" - Icon for tag. To show only icon without text you have to set
    "Match" and keep "Tag Name" field empty.
+
+-  "Lock" - If enabled, items with such tag will have to be untagged before
+   deleting.
 
 Tagging items can be accessed from context menu if appropriate commands
 are added in Command dialog (generated commands are available in the

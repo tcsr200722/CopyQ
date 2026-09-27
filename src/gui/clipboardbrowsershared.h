@@ -1,24 +1,10 @@
-/*
-    Copyright (c) 2020, Lukas Holecek <hluk@email.cz>
+// SPDX-License-Identifier: GPL-3.0-or-later
+#pragma once
 
-    This file is part of CopyQ.
 
-    CopyQ is free software: you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation, either version 3 of the License, or
-    (at your option) any later version.
-
-    CopyQ is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
-
-    You should have received a copy of the GNU General Public License
-    along with CopyQ.  If not, see <http://www.gnu.org/licenses/>.
-*/
-#ifndef CLIPBOARDBROWSERSHARED_H
-#define CLIPBOARDBROWSERSHARED_H
-
+#include "common/navigationstyle.h"
+#include "common/encryption.h"
+#include "gui/menuitems.h"
 #include "gui/theme.h"
 
 #include <QString>
@@ -28,17 +14,20 @@
 class ActionHandler;
 class ItemFactory;
 class NotificationDaemon;
+class PasswordPrompt;
 
 struct ClipboardBrowserShared {
     QString editor;
     int maxItems = 100;
     bool textWrap = true;
-    bool viMode = false;
+    NavigationStyle navigationStyle = NavigationStyle::Default;
     bool saveOnReturnKey = false;
     bool moveItemOnReturnKey = false;
     bool showSimpleItems = false;
     bool numberSearch = false;
     int minutesToExpire = 0;
+    int encryptedExpireSeconds = 0;
+    bool tabsEncrypted = false;
     int saveDelayMsOnItemAdded = 0;
     int saveDelayMsOnItemModified = 0;
     int saveDelayMsOnItemRemoved = 0;
@@ -48,9 +37,10 @@ struct ClipboardBrowserShared {
     ItemFactory *itemFactory = nullptr;
     ActionHandler *actions = nullptr;
     NotificationDaemon *notifications = nullptr;
+    PasswordPrompt *passwordPrompt = nullptr;
     Theme theme;
+    MenuItems menuItems;
+    Encryption::EncryptionKey encryptionKey;
 };
 
 using ClipboardBrowserSharedPtr = std::shared_ptr<ClipboardBrowserShared>;
-
-#endif // CLIPBOARDBROWSERSHARED_H

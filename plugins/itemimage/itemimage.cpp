@@ -1,26 +1,8 @@
-/*
-    Copyright (c) 2020, Lukas Holecek <hluk@email.cz>
-
-    This file is part of CopyQ.
-
-    CopyQ is free software: you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation, either version 3 of the License, or
-    (at your option) any later version.
-
-    CopyQ is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
-
-    You should have received a copy of the GNU General Public License
-    along with CopyQ.  If not, see <http://www.gnu.org/licenses/>.
-*/
+// SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "itemimage.h"
 #include "ui_itemimagesettings.h"
 
-#include "common/contenttype.h"
 #include "common/mimetypes.h"
 #include "item/itemeditor.h"
 #include "gui/pixelratio.h"
@@ -34,6 +16,7 @@
 #include <QSettings>
 #include <QtPlugin>
 #include <QVariant>
+#include <QVariantMap>
 
 namespace {
 
@@ -42,43 +25,55 @@ const QLatin1String configMaxImageHeight("max_image_height");
 const QLatin1String configImageEditor("image_editor");
 const QLatin1String configSvgEditor("svg_editor");
 
-QString findImageFormat(const QList<QString> &formats)
+bool getImageData(
+    const QVariantMap &dataMap, const QString &format, QByteArray *data, QString *mime, QPixmap *pix = nullptr)
 {
-    // Check formats in this order.
-    static const auto imageFormats = QList<QLatin1String>()
-            << QLatin1String("image/png")
-            << QLatin1String("image/bmp")
-            << QLatin1String("image/jpeg")
-            << QLatin1String("image/gif");
+    *data = dataMap.value(format).toByteArray();
+    if (data->isEmpty())
+        return false;
 
-    for (const auto &format : imageFormats) {
-        if ( formats.contains(format) )
-            return format;
+    if (!pix) {
+        *mime = format;
+        return true;
     }
 
-    return QString();
+    if (pix->loadFromData(*data, format.toLatin1())) {
+        *mime = format;
+        return true;
+    }
+
+    return false;
 }
 
-bool getImageData(const QVariantMap &dataMap, QByteArray *data, QString *mime)
+bool getPrefferedImageData(
+    const QVariantMap &dataMap, QByteArray *data, QString *mime, QPixmap *pix = nullptr)
 {
-    *mime = findImageFormat(dataMap.keys());
-    if ( mime->isEmpty() )
-        return false;
-
-    *data = dataMap[*mime].toByteArray();
-
-    return true;
+    return getImageData(dataMap, QStringLiteral("image/png"), data, mime, pix)
+        || getImageData(dataMap, QStringLiteral("image/bmp"), data, mime, pix)
+        || getImageData(dataMap, QStringLiteral("image/jpeg"), data, mime, pix)
+        || getImageData(dataMap, QStringLiteral("image/gif"), data, mime, pix);
 }
 
-bool getSvgData(const QVariantMap &dataMap, QByteArray *data, QString *mime)
+bool getFallbackImageData(
+    const QVariantMap &dataMap, QByteArray *data, QString *mime, QPixmap *pix = nullptr)
 {
-    const QString svgMime("image/svg+xml");
-    if ( !dataMap.contains(svgMime) )
-        return false;
+    // Fallback to any other supported image format.
+    const QLatin1String prefix("image/");
+    for (auto it = dataMap.constBegin(); it != dataMap.constEnd(); ++it) {
+        if (!it.key().startsWith(prefix))
+            continue;
 
-    *mime = svgMime;
-    *data = dataMap[*mime].toByteArray();
-    return true;
+        if (getImageData(dataMap, it.key(), data, mime, pix))
+            return true;
+    }
+
+    return false;
+}
+
+bool getSvgData(
+    const QVariantMap &dataMap, QByteArray *data, QString *mime, QPixmap *pix = nullptr)
+{
+    return getImageData(dataMap, QStringLiteral("image/svg+xml"), data, mime, pix);
 }
 
 bool getAnimatedImageData(const QVariantMap &dataMap, QByteArray *data, QByteArray *format)
@@ -99,12 +94,9 @@ bool getPixmapFromData(const QVariantMap &dataMap, QPixmap *pix)
 {
     QString mime;
     QByteArray data;
-    if ( !getImageData(dataMap, &data, &mime) && !getSvgData(dataMap, &data, &mime) )
-        return false;
-
-    pix->loadFromData( data, mime.toLatin1() );
-
-    return true;
+    return getPrefferedImageData(dataMap, &data, &mime, pix)
+        || getSvgData(dataMap, &data, &mime, pix)
+        || getFallbackImageData(dataMap, &data, &mime, pix);
 }
 
 } // namespace
@@ -138,7 +130,7 @@ void ItemImage::setCurrent(bool current)
     if (current) {
         if ( !m_animationData.isEmpty() ) {
             if (!m_animation) {
-                QBuffer *stream = new QBuffer(&m_animationData, this);
+                auto *stream = new QBuffer(&m_animationData, this);
                 m_animation = new QMovie(stream, m_animationFormat, this);
                 m_animation->setScaledSize( m_pixmap.size() );
             }
@@ -193,9 +185,7 @@ void ItemImage::stopAnimation()
         movie()->stop();
 }
 
-ItemImageLoader::ItemImageLoader()
-{
-}
+ItemImageLoader::ItemImageLoader() = default;
 
 ItemImageLoader::~ItemImageLoader() = default;
 
@@ -204,7 +194,6 @@ ItemWidget *ItemImageLoader::create(const QVariantMap &data, QWidget *parent, bo
     if ( data.value(mimeHidden).toBool() )
         return nullptr;
 
-    // TODO: Just check if image provided and load it in different thread.
     QPixmap pix;
     if ( !getPixmapFromData(data, &pix) )
         return nullptr;
@@ -255,7 +244,7 @@ void ItemImageLoader::loadSettings(const QSettings &settings)
 QWidget *ItemImageLoader::createSettingsWidget(QWidget *parent)
 {
     ui.reset(new Ui::ItemImageSettings);
-    QWidget *w = new QWidget(parent);
+    auto *w = new QWidget(parent);
     ui->setupUi(w);
     ui->spinBoxImageWidth->setValue(m_maxImageWidth);
     ui->spinBoxImageHeight->setValue(m_maxImageHeight);
@@ -268,7 +257,7 @@ QObject *ItemImageLoader::createExternalEditor(const QModelIndex &, const QVaria
 {
     QString mime;
     QByteArray imageData;
-    if ( !m_imageEditor.isEmpty() && getImageData(data, &imageData, &mime) )
+    if ( !m_imageEditor.isEmpty() && getPrefferedImageData(data, &imageData, &mime) )
         return new ItemEditor(imageData, mime, m_imageEditor, parent);
 
     if ( !m_svgEditor.isEmpty() && getSvgData(data, &imageData, &mime) )

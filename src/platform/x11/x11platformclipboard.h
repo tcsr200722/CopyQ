@@ -1,73 +1,71 @@
-/*
-    Copyright (c) 2020, Lukas Holecek <hluk@email.cz>
+// SPDX-License-Identifier: GPL-3.0-or-later
 
-    This file is part of CopyQ.
+#pragma once
 
-    CopyQ is free software: you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation, either version 3 of the License, or
-    (at your option) any later version.
-
-    CopyQ is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
-
-    You should have received a copy of the GNU General Public License
-    along with CopyQ.  If not, see <http://www.gnu.org/licenses/>.
-*/
-
-#ifndef X11PLATFORMCLIPBOARD_H
-#define X11PLATFORMCLIPBOARD_H
 
 #include "platform/dummy/dummyclipboard.h"
 
 #include <QByteArray>
+#include <QMimeData>
 #include <QStringList>
 #include <QTimer>
-
 #include <memory>
+
+class GnomeClipboardExtensionClient;
 
 class X11PlatformClipboard final : public DummyClipboard
 {
 public:
     X11PlatformClipboard();
-
-    void startMonitoring(const QStringList &formats) override;
-
-    void setMonitoringEnabled(ClipboardMode mode, bool enable) override;
+    ~X11PlatformClipboard() override;
 
     QVariantMap data(ClipboardMode mode, const QStringList &formats) const override;
 
     void setData(ClipboardMode mode, const QVariantMap &dataMap) override;
+    void setRawData(ClipboardMode mode, QMimeData *mimeData) override;
 
-    const QMimeData *mimeData(ClipboardMode mode) const override;
+    bool isSelectionSupported() const override { return true; }
 
-    bool isSelectionSupported() const override { return m_selectionSupported; }
+    void setClipboardOwner(const QString &owner) override { m_clipboardOwner = owner; }
 
 protected:
+    void startMonitoringBackend(const QStringList &formats, ClipboardModeMask modes) override;
+    void stopMonitoringBackend() override;
+    void updateMonitoringSubscription(const QStringList &formats, ClipboardModeMask modes) override;
+    const QMimeData *mimeData(ClipboardMode mode) const override;
+    const QMimeData *rawMimeData(ClipboardMode mode) const override;
     void onChanged(int mode) override;
+    const long int *clipboardSequenceNumber(ClipboardMode mode) const override {
+        return mode == ClipboardMode::Clipboard
+            ? &m_clipboardData.sequenceNumber
+            : &m_selectionData.sequenceNumber;
+    }
 
 private:
     struct ClipboardData {
         QVariantMap newData;
         QVariantMap data;
-        QByteArray owner;
-        QByteArray newOwner;
+        QString owner;
+        QString newOwner;
         QTimer timerEmitChange;
         QStringList formats;
         quint32 newDataTimestamp;
         ClipboardMode mode;
         bool enabled = true;
         bool cloningData = false;
-        bool abortCloning = false;
+        long int sequenceNumber = 0;
+        bool ignoreNext = false;
         int retry = 0;
     };
 
+    bool isGnomeExtensionAvailable() const;
+    void setGnomeExtensionClipboardData(ClipboardMode mode, const QVariantMap &dataMap) const;
     void check();
     void updateClipboardData(ClipboardData *clipboardData);
     void useNewClipboardData(ClipboardData *clipboardData);
     void checkAgainLater(bool clipboardChanged, int interval);
+    void onGnomeClipboardChanged(int clipboardType);
+    int toGnomeClipboardTypes(ClipboardModeMask modes) const;
 
     QTimer m_timerCheckAgain;
 
@@ -75,7 +73,9 @@ private:
     ClipboardData m_selectionData;
 
     bool m_monitoring = false;
-    bool m_selectionSupported = true;
-};
 
-#endif // X11PLATFORMCLIPBOARD_H
+    QString m_clipboardOwner;
+    std::unique_ptr<GnomeClipboardExtensionClient> m_gnomeClipboardExtensionClient;
+    mutable std::unique_ptr<QMimeData> m_gnomeClipboardMimeData;
+    mutable std::unique_ptr<QMimeData> m_gnomeSelectionMimeData;
+};

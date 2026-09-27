@@ -1,55 +1,26 @@
-/*
-    Copyright (c) 2020, Lukas Holecek <hluk@email.cz>
+// SPDX-License-Identifier: GPL-3.0-or-later
 
-    This file is part of CopyQ.
+#pragma once
 
-    CopyQ is free software: you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation, either version 3 of the License, or
-    (at your option) any later version.
 
-    CopyQ is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
+#include <QtContainerFwd>
 
-    You should have received a copy of the GNU General Public License
-    along with CopyQ.  If not, see <http://www.gnu.org/licenses/>.
-*/
-
-#ifndef COMMON_H
-#define COMMON_H
-
-#include <QtGlobal> // Q_WS_*
-#include <QStringList>
-#include <QVariantMap>
-
+class ClipboardDataGuard;
 class QByteArray;
 class QDropEvent;
 class QFont;
-class QKeyEvent;
 class QMimeData;
 class QProcess;
 class QString;
 
-#if !defined(COPYQ_WS_X11) && !defined(Q_OS_WIN) && !defined(Q_OS_MAC)
-#   define NO_GLOBAL_SHORTCUTS
-#endif
-
-#ifdef COPYQ_WS_X11
-// QClipboard::supportsSelection() must return true.
-#   define HAS_MOUSE_SELECTIONS
-#endif
-
-bool isMainThread();
-
 QByteArray makeClipboardOwnerData();
 
 /** Clone data for given formats (text or HTML will be UTF8 encoded). */
-QVariantMap cloneData(const QMimeData &data, QStringList formats, bool *abortCloning = nullptr);
+QVariantMap cloneData(ClipboardDataGuard &data, const QStringList &formats);
+QVariantMap cloneData(const QMimeData *data, const QStringList &formats, const long int *clipboardSequenceNumber = nullptr);
 
 /** Clone all data as is. */
-QVariantMap cloneData(const QMimeData &data);
+QVariantMap cloneData(const QMimeData *data);
 
 QString cloneText(const QMimeData &data);
 
@@ -95,14 +66,9 @@ QString textLabelForData(const QVariantMap &data);
 
 void renameToUnique(QString *name, const QStringList &names);
 
-QString dataToText(const QByteArray &bytes, const QString &mime = QString());
+QString dataToText(const QByteArray &bytes, const QString &mime);
 
 bool isClipboardData(const QVariantMap &data);
-
-/**
- * Handle key for Vi mode.
- */
-bool handleViKey(QKeyEvent *event, QObject *eventReceiver);
 
 /**
  * Return true only if tabs can accept the drag'n'drop event.
@@ -114,4 +80,4 @@ bool canDropToTab(const QDropEvent &event);
  */
 void acceptDrag(QDropEvent *event);
 
-#endif // COMMON_H
+QString formatDataSize(qint64 bytes);

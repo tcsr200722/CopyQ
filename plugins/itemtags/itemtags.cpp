@@ -1,38 +1,17 @@
-/*
-    Copyright (c) 2020, Lukas Holecek <hluk@email.cz>
-
-    This file is part of CopyQ.
-
-    CopyQ is free software: you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation, either version 3 of the License, or
-    (at your option) any later version.
-
-    CopyQ is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
-
-    You should have received a copy of the GNU General Public License
-    along with CopyQ.  If not, see <http://www.gnu.org/licenses/>.
-*/
+// SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "itemtags.h"
 #include "ui_itemtagssettings.h"
 
 #include "common/command.h"
-#include "common/compatibility.h"
 #include "common/contenttype.h"
 #include "common/regexp.h"
 #include "common/textdata.h"
 #include "gui/iconfont.h"
 #include "gui/iconselectbutton.h"
+#include "gui/fromiconid.h"
 #include "gui/pixelratio.h"
 #include "item/itemfilter.h"
-
-#ifdef HAS_TESTS
-#   include "tests/itemtagstests.h"
-#endif
 
 #include <QBoxLayout>
 #include <QColorDialog>
@@ -143,8 +122,7 @@ QVariant cellWidgetProperty(QTableWidget *table, int row, int column, const char
 
 QStringList tags(const QVariant &tags)
 {
-    return getTextData( tags.toByteArray() )
-            .split(',', SKIP_EMPTY_PARTS);
+    return getTextData( tags.toByteArray() ).split(',', Qt::SkipEmptyParts);
 }
 
 QStringList tags(const QVariantMap &itemData)
@@ -170,7 +148,7 @@ QString removeTagText()
 Command dummyTagCommand()
 {
     Command c;
-    c.icon = QString(QChar(IconTag));
+    c.icon = fromIconId(IconTag);
     c.inMenu = true;
     return c;
 }
@@ -185,16 +163,10 @@ void addTagCommands(const QString &tagName, const QString &match, QVector<Comman
 
     c = dummyTagCommand();
     c.internalId = QStringLiteral("copyq_tags_tag:") + name;
-    c.name = ItemTagsLoader::tr("Tag as %1").arg(quotedTag);
-    c.matchCmd = "copyq: plugins.itemtags.hasTag(" + tagString + ") && fail()";
-    c.cmd = "copyq: plugins.itemtags.tag(" + tagString + ")";
-    commands->append(c);
-
-    c = dummyTagCommand();
-    c.internalId = QStringLiteral("copyq_tags_untag:") + name;
-    c.name = ItemTagsLoader::tr("Remove tag %1").arg(quotedTag);
-    c.matchCmd = "copyq: plugins.itemtags.hasTag(" + tagString + ") || fail()";
-    c.cmd = "copyq: plugins.itemtags.untag(" + tagString + ")";
+    c.name = ItemTagsLoader::tr("Toggle Tag %1").arg(quotedTag);
+    c.cmd = QStringLiteral(
+        "copyq: (plugins.itemtags.hasTag(%1) ? plugins.itemtags.untag : plugins.itemtags.tag)(%1)"
+    ).arg(tagString);
     commands->append(c);
 }
 
@@ -225,16 +197,16 @@ void initTagWidget(QWidget *tagWidget, const ItemTags::Tag &tag, const QFont &fo
 
     auto layout = new QHBoxLayout(tagWidget);
     const int x = QFontMetrics(font).height() / 6;
-    layout->setContentsMargins(x, x, x, x);
+    layout->setContentsMargins(x, 0, x, 0);
     layout->setSpacing(x * 2);
 
     if (tag.icon.size() > 1) {
-        QLabel *iconLabel = new QLabel(tagWidget);
+        auto *iconLabel = new QLabel(tagWidget);
         const QPixmap icon(tag.icon);
         iconLabel->setPixmap(icon);
         layout->addWidget(iconLabel);
     } else if (tag.icon.size() == 1) {
-        QLabel *iconLabel = new QLabel(tagWidget);
+        auto *iconLabel = new QLabel(tagWidget);
         iconLabel->setFont(iconFont());
         iconLabel->setText(tag.icon);
         layout->addWidget(iconLabel);
@@ -266,7 +238,10 @@ void addTagButtons(QBoxLayout *layout, const ItemTags::Tags &tags)
     const QFont font = smallerFont(layout->parentWidget()->font());
 
     for (const auto &tag : tags) {
-        QWidget *tagWidget = new QWidget(layout->parentWidget());
+        if ( tag.name.isEmpty() && tag.icon.isEmpty() )
+            continue;
+
+        auto *tagWidget = new QWidget(layout->parentWidget());
         initTagWidget(tagWidget, tag, font);
         layout->addWidget(tagWidget);
     }
@@ -423,7 +398,7 @@ void ItemTagsScriptable::tag()
     }
 
     if ( args.size() <= 1 ) {
-        const auto dataValueList = call("selectedItemsData").toList();
+        const auto dataValueList = call("selectedItemsData", {}).toList();
 
         QVariantList dataList;
         dataList.reserve( dataValueList.size() );
@@ -435,7 +410,7 @@ void ItemTagsScriptable::tag()
             dataList.append(itemData);
         }
 
-        call( "setSelectedItemsData", QVariantList() << QVariant(dataList) );
+        call("setSelectedItemsData", {QVariant(dataList)});
     } else {
         for ( int row : rows(args, 1) ) {
             auto itemTags = tags(row);
@@ -451,7 +426,7 @@ void ItemTagsScriptable::untag()
     auto tagName = args.value(0).toString();
 
     if ( args.size() <= 1 ) {
-        const auto dataValueList = call("selectedItemsData").toList();
+        const auto dataValueList = call("selectedItemsData", {}).toList();
 
         if ( tagName.isEmpty() ) {
             QStringList allTags;
@@ -475,7 +450,7 @@ void ItemTagsScriptable::untag()
             dataList.append(itemData);
         }
 
-        call( "setSelectedItemsData", QVariantList() << QVariant(dataList) );
+        call("setSelectedItemsData", {QVariant(dataList)});
     } else {
         const auto rows = this->rows(args, 1);
 
@@ -502,7 +477,7 @@ void ItemTagsScriptable::clearTags()
     const auto args = currentArguments();
 
     if ( args.isEmpty() ) {
-        const auto dataValueList = call("selectedItemsData").toList();
+        const auto dataValueList = call("selectedItemsData", {}).toList();
 
         QVariantList dataList;
         for (const auto &itemDataValue : dataValueList) {
@@ -511,7 +486,7 @@ void ItemTagsScriptable::clearTags()
             dataList.append(itemData);
         }
 
-        call( "setSelectedItemsData", QVariantList() << QVariant(dataList) );
+        call("setSelectedItemsData", {QVariant(dataList)});
     } else {
         const auto rows = this->rows(args, 0);
         for (int row : rows)
@@ -525,7 +500,7 @@ bool ItemTagsScriptable::hasTag()
     const auto tagName = args.value(0).toString();
 
     if ( args.size() <= 1 ) {
-        const auto dataValueList = call("selectedItemsData").toList();
+        const auto dataValueList = call("selectedItemsData", {}).toList();
         for (const auto &itemDataValue : dataValueList) {
             const auto itemData = itemDataValue.toMap();
             const auto itemTags = ::tags(itemData);
@@ -541,10 +516,7 @@ bool ItemTagsScriptable::hasTag()
 
 QString ItemTagsScriptable::askTagName(const QString &dialogTitle, const QStringList &tags)
 {
-    const auto value = call( "dialog", QVariantList()
-          << ".title" << dialogTitle
-          << dialogTitle << tags );
-
+    const auto value = call("dialog", {".title", dialogTitle, dialogTitle, tags});
     return value.toString();
 }
 
@@ -575,14 +547,14 @@ QList<int> ItemTagsScriptable::rows(const QVariantList &arguments, int skip)
 
 QStringList ItemTagsScriptable::tags(int row)
 {
-    const auto value = call("read", QVariantList() << mimeTags << row);
+    const auto value = call("read", {mimeTags, row});
     return ::tags(value);
 }
 
 void ItemTagsScriptable::setTags(int row, const QStringList &tags)
 {
     const auto value = tags.join(",");
-    call("change", QVariantList() << row << mimeTags << value);
+    call("change", {row, mimeTags, value});
 }
 
 bool ItemTagsScriptable::addTag(const QString &tagName, QStringList *tags)
@@ -676,7 +648,7 @@ void ItemTagsLoader::loadSettings(const QSettings &settings)
 QWidget *ItemTagsLoader::createSettingsWidget(QWidget *parent)
 {
     ui.reset(new Ui::ItemTagsSettings);
-    QWidget *w = new QWidget(parent);
+    auto *w = new QWidget(parent);
     ui->setupUi(w);
 
     // Init tag table.
@@ -726,29 +698,6 @@ bool ItemTagsLoader::matches(const QModelIndex &index, const ItemFilter &filter)
     return filter.matches(tags) || filter.matches(accentsRemoved(tags));
 }
 
-QObject *ItemTagsLoader::tests(const TestInterfacePtr &test) const
-{
-#ifdef HAS_TESTS
-    QStringList tags;
-
-    for (const auto &tagName : ItemTagsTests::testTags()) {
-        Tag tag;
-        tag.name = tagName;
-        tags.append(serializeTag(tag));
-    }
-
-    QVariantMap settings;
-    settings[configTags] = tags;
-
-    QObject *tests = new ItemTagsTests(test);
-    tests->setProperty("CopyQ_test_settings", settings);
-    return tests;
-#else
-    Q_UNUSED(test)
-    return nullptr;
-#endif
-}
-
 ItemScriptable *ItemTagsLoader::scriptableObject()
 {
     return new ItemTagsScriptable(userTags());
@@ -761,8 +710,14 @@ QVector<Command> ItemTagsLoader::commands() const
     if (m_tags.isEmpty()) {
         addTagCommands(tr("Important", "Tag name for example command"), QString(), &commands);
     } else {
-        for (const auto &tag : m_tags)
+        const QRegularExpression reCapture(R"(\(.*\))");
+        const QRegularExpression reGroup(R"(\\\d)");
+        for (const auto &tag : m_tags) {
+            if ( reCapture.match(tag.match).hasMatch() && reGroup.match(tag.name).hasMatch() )
+                continue;
+
             addTagCommands(tag.name, tag.match, &commands);
+        }
     }
 
     Command c;
@@ -803,7 +758,7 @@ QStringList ItemTagsLoader::userTags() const
 
 void ItemTagsLoader::onColorButtonClicked()
 {
-    QPushButton *button = qobject_cast<QPushButton*>(sender());
+    auto *button = qobject_cast<QPushButton*>(sender());
     Q_ASSERT(button);
 
     const QColor color = button->property(propertyColor).value<QColor>();
@@ -827,7 +782,7 @@ void ItemTagsLoader::onTableWidgetItemChanged(QTableWidgetItem *item)
 
     const int row = item->row();
     QTableWidgetItem *tagItem = ui->tableWidget->item(row, tagsTableColumns::name);
-    const QVariant value = QVariant::fromValue(tagFromTable(row));
+    const auto value = QVariant::fromValue(tagFromTable(row));
     tagItem->setData(TagTableWidgetItem::TagRole, value);
 
     m_blockDataChange = false;
@@ -908,6 +863,8 @@ void ItemTagsLoader::addTagToSettingsTable(const ItemTagsLoader::Tag &tag)
 
     auto lock = new QTableWidgetItem();
     lock->setCheckState(tag.lock ? Qt::Checked : Qt::Unchecked);
+    const QString toolTip = t->horizontalHeaderItem(tagsTableColumns::lock)->toolTip();
+    lock->setToolTip(toolTip);
     t->setItem( row, tagsTableColumns::lock, lock );
 
     auto colorButton = new QPushButton(t);

@@ -6,14 +6,15 @@ This page describes the basic functionality of CopyQ clipboard manager.
 First Start
 -----------
 
-To start CopyQ, double-click the program icon or run command ``copyq``.
-This starts the graphical interface which can be accessed from the tray (NOTE: on OS X the tray defaults to the top-right of the screen and is not to be confused with Launchpad).
+To start CopyQ, double-click the program icon or run command ``copyq``
+(on Windows, run ``CopyQ.exe`` directly or launch it from the Start menu; no desktop icon is created by default).
+This starts the graphical interface which can be accessed from the tray (NOTE: on macOS the tray defaults to the top-right of the screen and is not to be confused with Launchpad).
 Click the tray icon to show application window or right-click the tray icon and select "Show/Hide" or run ``copyq show`` command.
 
 .. image:: images/copyq-show.png
   :width: 400
   :alt: copyq show
-  
+
 The central element in the application window is **item list** containing
 **clipboard history**. By default, the application **stores any new clipboard
 content** in the list.

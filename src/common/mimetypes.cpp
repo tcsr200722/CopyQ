@@ -1,26 +1,10 @@
-/*
-    Copyright (c) 2020, Lukas Holecek <hluk@email.cz>
-
-    This file is part of CopyQ.
-
-    CopyQ is free software: you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation, either version 3 of the License, or
-    (at your option) any later version.
-
-    CopyQ is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
-
-    You should have received a copy of the GNU General Public License
-    along with CopyQ.  If not, see <http://www.gnu.org/licenses/>.
-*/
+// SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "mimetypes.h"
 
 #include <QLatin1String>
 
+const QLatin1String mimePrivatePrefix(COPYQ_MIME_PRIVATE_PREFIX);
 const QLatin1String mimeText("text/plain");
 const QLatin1String mimeTextUtf8("text/plain;charset=utf-8");
 const QLatin1String mimeHtml("text/html");
@@ -38,3 +22,5 @@ const QLatin1String mimeHidden(COPYQ_MIME_PREFIX "hidden");
 const QLatin1String mimeShortcut(COPYQ_MIME_PREFIX "shortcut");
 const QLatin1String mimeColor(COPYQ_MIME_PREFIX "color");
 const QLatin1String mimeOutputTab(COPYQ_MIME_PREFIX "output-tab");
+const QLatin1String mimeDisplayItemInMenu(COPYQ_MIME_PREFIX "display-item-in-menu");
+const QLatin1String mimeSecret(COPYQ_MIME_PREFIX "secret");

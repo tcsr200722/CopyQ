@@ -1,23 +1,7 @@
-/*
-    Copyright (c) 2020, Lukas Holecek <hluk@email.cz>
-
-    This file is part of CopyQ.
-
-    CopyQ is free software: you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation, either version 3 of the License, or
-    (at your option) any later version.
-
-    CopyQ is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
-
-    You should have received a copy of the GNU General Public License
-    along with CopyQ.  If not, see <http://www.gnu.org/licenses/>.
-*/
+// SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "macplatformwindow.h"
+#include "cfref.h"
 
 #include "common/appconfig.h"
 #include "common/log.h"
@@ -69,26 +53,25 @@ namespace {
 
     NSNumber* charToKeyCode(const char c)
     {
-        TISInputSourceRef currentKeyboard = TISCopyCurrentKeyboardInputSource();
-        CFDataRef uchr = (CFDataRef)TISGetInputSourceProperty(
+        CFRef<TISInputSourceRef> currentKeyboard = TISCopyCurrentKeyboardLayoutInputSource();
+        CFDataRef layoutData = (CFDataRef)TISGetInputSourceProperty(
             currentKeyboard, kTISPropertyUnicodeKeyLayoutData);
-        const UCKeyboardLayout *keyboardLayout =
-            (const UCKeyboardLayout*)CFDataGetBytePtr(uchr);
 
-        if (keyboardLayout != nil) {
+        if (layoutData != nil) {
+            const UCKeyboardLayout *keyboardLayout =
+                (const UCKeyboardLayout*)CFDataGetBytePtr(layoutData);
+
             COPYQ_LOG( QStringLiteral("Searching key code for '%1'").arg(c) );
             NSString *keyChar = [NSString stringWithFormat:@"%c" , c];
             for (size_t i = 0; i < 128; ++i) {
                 NSString* str = keyCodeToString((CGKeyCode)i, keyboardLayout);
                 if (str != nil && [str isEqualToString:keyChar]) {
                     COPYQ_LOG( QStringLiteral("KeyCode for '%1' is %2").arg(c).arg(i) );
-                    CFRelease(currentKeyboard);
                     return [NSNumber numberWithInt:i];
                 }
             }
         }
 
-        CFRelease(currentKeyboard);
         return nil;
     }
 
@@ -108,42 +91,29 @@ namespace {
         return nil;
     }
 
-    void sendShortcut(int modifier, int key, pid_t pid = -1) {
+    void sendShortcut(int modifier, int key) {
         COPYQ_LOG( QStringLiteral("Sending key codes %1 and %2")
                    .arg(modifier)
                    .arg(key) );
 
-        CGEventSourceRef sourceRef = CGEventSourceCreate(
+        CFRef<CGEventSourceRef> sourceRef = CGEventSourceCreate(
             kCGEventSourceStateCombinedSessionState);
 
-        CGEventRef commandDown = CGEventCreateKeyboardEvent(sourceRef, modifier, YES);
-        CGEventRef VDown = CGEventCreateKeyboardEvent(sourceRef, key, YES);
+        CFRef<CGEventRef> commandDown = CGEventCreateKeyboardEvent(sourceRef, modifier, YES);
+        CFRef<CGEventRef> VDown = CGEventCreateKeyboardEvent(sourceRef, key, YES);
 
-        CGEventRef VUp = CGEventCreateKeyboardEvent(sourceRef, key, NO);
-        CGEventRef commandUp = CGEventCreateKeyboardEvent(sourceRef, modifier, NO);
+        CFRef<CGEventRef> VUp = CGEventCreateKeyboardEvent(sourceRef, key, NO);
+        CFRef<CGEventRef> commandUp = CGEventCreateKeyboardEvent(sourceRef, modifier, NO);
 
         // 0x000008 is a hack to fix pasting in Emacs?
         // https://github.com/TermiT/Flycut/pull/18
         CGEventSetFlags(VDown,CGEventFlags(kCGEventFlagMaskCommand|0x000008));
         CGEventSetFlags(VUp,CGEventFlags(kCGEventFlagMaskCommand|0x000008));
 
-        if (pid != -1) {
-            CGEventPostToPid(pid, commandDown);
-            CGEventPostToPid(pid, VDown);
-            CGEventPostToPid(pid, VUp);
-            CGEventPostToPid(pid, commandUp);
-        } else {
-            CGEventPost(kCGHIDEventTap, commandDown);
-            CGEventPost(kCGHIDEventTap, VDown);
-            CGEventPost(kCGHIDEventTap, VUp);
-            CGEventPost(kCGHIDEventTap, commandUp);
-        }
-
-        CFRelease(commandDown);
-        CFRelease(VDown);
-        CFRelease(VUp);
-        CFRelease(commandUp);
-        CFRelease(sourceRef);
+        CGEventPost(kCGHIDEventTap, commandDown);
+        CGEventPost(kCGHIDEventTap, VDown);
+        CGEventPost(kCGHIDEventTap, VUp);
+        CGEventPost(kCGHIDEventTap, commandUp);
     }
 
     /**
@@ -176,17 +146,15 @@ namespace {
     pid_t getPidForWid(WId find_wid) {
         // Build a set of "normal" windows. This is necessary as "NSWindowList" gets things like the
         // menubar (which can be "owned" by various apps).
-        NSArray *array = (__bridge NSArray*) CGWindowListCopyWindowInfo(kCGWindowListOptionAll | kCGWindowListExcludeDesktopElements, kCGNullWindowID);
-        for (NSDictionary* dict in array) {
+        CFRef<CFArrayRef> windowList = CGWindowListCopyWindowInfo(kCGWindowListOptionAll | kCGWindowListExcludeDesktopElements, kCGNullWindowID);
+        for (NSDictionary* dict in (__bridge NSArray*)windowList.get()) {
             long int pid = [(NSNumber*)[dict objectForKey:@"kCGWindowOwnerPID"] longValue];
             unsigned long int wid = (unsigned long) [(NSNumber*)[dict objectForKey:@"kCGWindowNumber"] longValue];
 
             if (wid == find_wid) {
-                CFRelease(array);
                 return pid;
             }
         }
-        CFRelease(array);
 
         return 0;
     }
@@ -196,8 +164,8 @@ namespace {
         // Build a set of "normal" windows. This is necessary as "NSWindowList" gets things like the
         // menubar (which can be "owned" by various apps).
         QSet<long int> widsForProcess;
-        NSArray *array = (__bridge NSArray*) CGWindowListCopyWindowInfo(kCGWindowListOptionAll | kCGWindowListExcludeDesktopElements, kCGNullWindowID);
-        for (NSDictionary* dict in array) {
+        CFRef<CFArrayRef> windowList = CGWindowListCopyWindowInfo(kCGWindowListOptionAll | kCGWindowListExcludeDesktopElements, kCGNullWindowID);
+        for (NSDictionary* dict in (__bridge NSArray*)windowList.get()) {
             long int pid = [(NSNumber*)[dict objectForKey:@"kCGWindowOwnerPID"] longValue];
             long int wid = [(NSNumber*)[dict objectForKey:@"kCGWindowNumber"] longValue];
             long int layer = [(NSNumber*)[dict objectForKey:@"kCGWindowLayer"] longValue];
@@ -206,7 +174,6 @@ namespace {
                 widsForProcess.insert(wid);
             }
         }
-        CFRelease(array);
 
         // Now look through the windows in NSWindowList (which are ordered from front to back)
         // the first window in this list which is also in widsForProcess is our frontmost "normal" window
@@ -228,30 +195,23 @@ namespace {
             return title;
         }
 
-        uint32_t windowid[1] = {static_cast<uint32_t>(wid)};
-        CFArrayRef windowArray = CFArrayCreate ( NULL, (const void **)windowid, 1 ,NULL);
-        NSArray *array = (__bridge NSArray*) CGWindowListCreateDescriptionFromArray(windowArray);
+        const void *windowid = reinterpret_cast<const void *>(static_cast<uintptr_t>(wid));
+        CFRef<CFArrayRef> windowArray = CFArrayCreate( nullptr, &windowid, 1, nullptr );
+        CFRef<CFArrayRef> descArray = CGWindowListCreateDescriptionFromArray(windowArray);
 
         // Should only be one
-        for (NSDictionary* dict in array) {
+        for (NSDictionary* dict in (__bridge NSArray*)descArray.get()) {
             title = QString::fromNSString([dict objectForKey:@"kCGWindowName"]);
         }
-
-        CFRelease(array);
-        CFRelease(windowArray);
 
         return title;
     }
 } // namespace
 
-MacPlatformWindow::MacPlatformWindow(NSRunningApplication *runningApp):
-    m_windowNumber(-1)
-    , m_window(0)
-    , m_runningApplication(0)
+MacPlatformWindow::MacPlatformWindow(NSRunningApplication *runningApp)
 {
     if (runningApp) {
         m_runningApplication = runningApp;
-        [runningApp retain];
         m_windowNumber = getTopWindow(runningApp.processIdentifier);
         COPYQ_LOG_VERBOSE("Created platform window for non-copyq");
     } else {
@@ -259,10 +219,7 @@ MacPlatformWindow::MacPlatformWindow(NSRunningApplication *runningApp):
     }
 }
 
-MacPlatformWindow::MacPlatformWindow(WId wid):
-    m_windowNumber(-1)
-    , m_window(0)
-    , m_runningApplication(0)
+MacPlatformWindow::MacPlatformWindow(WId wid)
 {
     // Try using wid as an actual window ID
     pid_t pid = getPidForWid(wid);
@@ -275,8 +232,6 @@ MacPlatformWindow::MacPlatformWindow(WId wid):
         // If given a view, its ours
         m_runningApplication = [NSRunningApplication currentApplication];
         m_window = [view window];
-        [m_runningApplication retain];
-        [m_window retain];
         m_windowNumber = [m_window windowNumber];
         COPYQ_LOG_VERBOSE("Created platform window for copyq");
     } else {
@@ -284,18 +239,20 @@ MacPlatformWindow::MacPlatformWindow(WId wid):
     }
 }
 
-MacPlatformWindow::MacPlatformWindow():
-    m_windowNumber(-1)
-    , m_window(0)
-    , m_runningApplication(0)
+MacPlatformWindow::MacPlatformWindow() = default;
+
+MacPlatformWindow::~MacPlatformWindow() = default;
+
+bool MacPlatformWindow::matchesWidget(const QWidget *widget) const
 {
+    if (!widget || !widget->windowHandle())
+        return false;
+    WId wid = widget->winId();
+    if (NSView *view = objc_cast<NSView>((id)wid))
+        return [[view window] windowNumber] == m_windowNumber;
+    return static_cast<long int>(wid) == m_windowNumber;
 }
 
-MacPlatformWindow::~MacPlatformWindow() {
-    // Releasing '0' or 'nil' is fine
-    [m_runningApplication release];
-    [m_window release];
-}
 
 QString MacPlatformWindow::getTitle()
 {
@@ -349,11 +306,11 @@ void MacPlatformWindow::raise()
     }
 }
 
-void MacPlatformWindow::pasteClipboard()
+bool MacPlatformWindow::pasteFromClipboard()
 {
     if (!m_runningApplication) {
         log("Failed to paste to unknown window", LogWarning);
-        return;
+        return false;
     }
 
     const AppConfig config;
@@ -369,15 +326,17 @@ void MacPlatformWindow::pasteClipboard()
         const int keyPressTimeMs = config.option<Config::window_key_press_time_ms>();
         delayedSendShortcut(kVK_Command, keyCodeV, keyPressTimeMs, 5, m_window);
     } else {
-        sendShortcut(kVK_Command, keyCodeV, m_runningApplication.processIdentifier);
+        sendShortcut(kVK_Command, keyCodeV);
     }
+
+    return true;
 }
 
-void MacPlatformWindow::copy()
+bool MacPlatformWindow::copyToClipboard()
 {
     if (!m_runningApplication) {
         log("Failed to copy from unknown window", LogWarning);
-        return;
+        return false;
     }
 
     const AppConfig config;
@@ -391,4 +350,5 @@ void MacPlatformWindow::copy()
     const int keyPressTimeMs = config.option<Config::window_key_press_time_ms>();
     const auto keyCodeC = keyCodeFromChar('c', kVK_ANSI_C);
     delayedSendShortcut(kVK_Command, keyCodeC, keyPressTimeMs, 5, m_window);
+    return true;
 }

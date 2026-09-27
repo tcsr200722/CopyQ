@@ -1,40 +1,33 @@
-/*
-    Copyright (c) 2020, Lukas Holecek <hluk@email.cz>
+// SPDX-License-Identifier: GPL-3.0-or-later
 
-    This file is part of CopyQ.
+#pragma once
 
-    CopyQ is free software: you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation, either version 3 of the License, or
-    (at your option) any later version.
-
-    CopyQ is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
-
-    You should have received a copy of the GNU General Public License
-    along with CopyQ.  If not, see <http://www.gnu.org/licenses/>.
-*/
-
-#ifndef SERIALIZE_H
-#define SERIALIZE_H
-
-#include <QVariantMap>
+#include <QByteArray>
+#include <QtContainerFwd>
 
 class QAbstractItemModel;
-class QByteArray;
 class QDataStream;
 class QIODevice;
 
-void serializeData(QDataStream *stream, const QVariantMap &data);
-bool deserializeData(QDataStream *stream, QVariantMap *data);
+namespace Encryption {
+    class EncryptionKey;
+}
+
+class DataFile;
+QDataStream &operator<<(QDataStream &out, DataFile value);
+QDataStream &operator>>(QDataStream &in, DataFile &value);
+void registerDataFileConverter();
+
+void serializeData(QDataStream *stream, const QVariantMap &data, int itemDataThreshold = -1, const Encryption::EncryptionKey *encryptionKey = nullptr);
+bool deserializeData(QDataStream *stream, QVariantMap *data, const Encryption::EncryptionKey *encryptionKey = nullptr);
 QByteArray serializeData(const QVariantMap &data);
-bool deserializeData(QVariantMap *data, const QByteArray &bytes);
+bool deserializeData(QVariantMap *data, const QByteArray &bytes, const Encryption::EncryptionKey *encryptionKey = nullptr);
 
-bool serializeData(const QAbstractItemModel &model, QDataStream *stream);
-bool deserializeData(QAbstractItemModel *model, QDataStream *stream, int maxItems);
-bool serializeData(const QAbstractItemModel &model, QIODevice *file);
-bool deserializeData(QAbstractItemModel *model, QIODevice *file, int maxItems);
+bool serializeData(const QAbstractItemModel &model, QDataStream *stream, int itemDataThreshold = -1, const Encryption::EncryptionKey *encryptionKey = nullptr);
+bool deserializeData(QAbstractItemModel *model, QDataStream *stream, const Encryption::EncryptionKey *encryptionKey = nullptr);
+bool serializeData(const QAbstractItemModel &model, QIODevice *file, int itemDataThreshold = -1, const Encryption::EncryptionKey *encryptionKey = nullptr);
+bool deserializeData(QAbstractItemModel *model, QIODevice *file, const Encryption::EncryptionKey *encryptionKey = nullptr);
 
-#endif // SERIALIZE_H
+bool itemDataFiles(QIODevice *file, QStringList *files, const Encryption::EncryptionKey *encryptionKey = nullptr);
+
+qint64 estimateDataSize(const QVariantMap &data);

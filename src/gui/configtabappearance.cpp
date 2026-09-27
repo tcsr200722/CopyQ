@@ -1,21 +1,4 @@
-/*
-    Copyright (c) 2020, Lukas Holecek <hluk@email.cz>
-
-    This file is part of CopyQ.
-
-    CopyQ is free software: you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation, either version 3 of the License, or
-    (at your option) any later version.
-
-    CopyQ is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
-
-    You should have received a copy of the GNU General Public License
-    along with CopyQ.  If not, see <http://www.gnu.org/licenses/>.
-*/
+// SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "gui/configtabappearance.h"
 #include "ui_configtabappearance.h"
@@ -79,7 +62,7 @@ public:
         edit->update();
     }
 
-    void search(QTextEdit *, bool) const override {}
+    void search(QTextEdit *, bool) const override { /* Simple filter: uses highlight only, no incremental search */ }
 
 private:
     QString m_text;
@@ -111,11 +94,7 @@ ConfigTabAppearance::ConfigTabAppearance(QWidget *parent)
     connect(ui->checkBoxAntialias, &QCheckBox::stateChanged,
             this, &ConfigTabAppearance::onCheckBoxAntialiasStateChanged);
 
-#if QT_VERSION >= QT_VERSION_CHECK(5,14,0)
     connect(ui->comboBoxThemes, &QComboBox::textActivated,
-#else
-    connect(ui->comboBoxThemes, static_cast<void (QComboBox::*)(const QString&)>(&QComboBox::activated),
-#endif
             this, &ConfigTabAppearance::onComboBoxThemesActivated);
 
     initSingleShotTimer(&m_timerPreview, 0, this, &ConfigTabAppearance::decoratePreviewNow);
@@ -212,7 +191,7 @@ void ConfigTabAppearance::onPushButtonEditThemeClicked()
         return;
     }
 
-    TemporarySettings settings;
+    TemporarySettings settings({});
     saveTheme(settings.settings());
 
     QByteArray data = settings.content();
@@ -225,7 +204,7 @@ void ConfigTabAppearance::onPushButtonEditThemeClicked()
 #endif
                  );
 
-    ItemEditor *editor = new ItemEditor(data, COPYQ_MIME_PREFIX "theme", m_editor, this);
+    auto *editor = new ItemEditor(data, COPYQ_MIME_PREFIX "theme", m_editor, this);
 
     connect( editor, &ItemEditor::fileModified,
              this, &ConfigTabAppearance::onThemeModified );
@@ -392,11 +371,11 @@ void ConfigTabAppearance::updateFontButtons()
 
         const QString colorButtonName = "pushButtonColor" + m.captured(1);
 
-        QPushButton *buttonFg = ui->scrollAreaTheme->findChild<QPushButton *>(colorButtonName + "Fg");
+        auto *buttonFg = ui->scrollAreaTheme->findChild<QPushButton *>(colorButtonName + "Fg");
         QColor colorFg = (buttonFg == nullptr) ? m_theme.color("fg")
                                             : evalColor( buttonFg->property("VALUE").toString(), m_theme );
 
-        QPushButton *buttonBg = ui->scrollAreaTheme->findChild<QPushButton *>(colorButtonName + "Bg");
+        auto *buttonBg = ui->scrollAreaTheme->findChild<QPushButton *>(colorButtonName + "Bg");
         QColor colorBg = (buttonBg == nullptr) ? m_theme.color("bg")
                                             : evalColor( buttonBg->property("VALUE").toString(), m_theme );
 

@@ -1,30 +1,19 @@
-/*
-    Copyright (c) 2020, Lukas Holecek <hluk@email.cz>
+// SPDX-License-Identifier: GPL-3.0-or-later
 
-    This file is part of CopyQ.
+#pragma once
 
-    CopyQ is free software: you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation, either version 3 of the License, or
-    (at your option) any later version.
-
-    CopyQ is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
-
-    You should have received a copy of the GNU General Public License
-    along with CopyQ.  If not, see <http://www.gnu.org/licenses/>.
-*/
-
-#ifndef TESTINTERFACE_H
-#define TESTINTERFACE_H
 
 #include "common/clipboardmode.h"
 
+#include <QByteArray>
 #include <QStringList>
+#include <QVariant>
+#include <QtContainerFwd>
 
 #include <memory>
+
+class QRegularExpression;
+class QProcess;
 
 /**
  * Interface for tests.
@@ -36,8 +25,6 @@ public:
         ReadErrors = 0,
         // Read all stderr.
         ReadAllStderr = 1,
-        // Read errors from stderr but omit single exception in script.
-        ReadErrorsWithoutScriptException = 2
     };
 
     TestInterface() = default;
@@ -55,6 +42,8 @@ public:
 
     /// Return true if GUI server is not running.
     virtual bool isServerRunning() = 0;
+
+    virtual QString executable() = 0;
 
     /// Run client with given @a arguments and input and read outputs and return exit code.
     virtual int run(const QStringList &arguments, QByteArray *stdoutData = nullptr,
@@ -74,6 +63,9 @@ public:
 
     /// Waits on client output.
     virtual QByteArray waitOnOutput(const QStringList &arguments, const QByteArray &stdoutExpected) = 0;
+
+    /// Set clipboard through monitor process.
+    virtual QByteArray setClipboard(const QMap<QString, QVariant> &data, ClipboardMode mode = ClipboardMode::Clipboard) = 0;
 
     /// Set clipboard through monitor process.
     virtual QByteArray setClipboard(
@@ -102,21 +94,22 @@ public:
     /// Clean up tabs and items. Return error string on error.
     virtual QByteArray cleanup() = 0;
 
-    /// Ignore given text in logs for current unit test.
-    virtual void setIgnoreError(const QByteArray &ignoreError) = 0;
-
     /// Platform specific key to remove (usually Delete, Backspace on OS X).
     virtual QString shortcutToRemove() = 0;
 
     /// Set environment variable for test.
     virtual void setEnv(const QString &name, const QString &value) = 0;
 
+    /// Ignore specific client and server errors.
+    virtual void ignoreErrors(const QRegularExpression &re) = 0;
+
     virtual bool writeOutErrors(const QByteArray &errors) = 0;
+
+    /// Start a client process with the given arguments without waiting for completion.
+    virtual bool startClient(QProcess *p, const QStringList &arguments) = 0;
 
     TestInterface(const TestInterface &) = delete;
     TestInterface &operator=(const TestInterface &) = delete;
 };
 
 using TestInterfacePtr = std::shared_ptr<TestInterface>;
-
-#endif // TESTINTERFACE_H

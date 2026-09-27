@@ -1,30 +1,11 @@
-/*
-    Copyright (c) 2020, Lukas Holecek <hluk@email.cz>
+// SPDX-License-Identifier: GPL-3.0-or-later
 
-    This file is part of CopyQ.
+#pragma once
 
-    CopyQ is free software: you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation, either version 3 of the License, or
-    (at your option) any later version.
 
-    CopyQ is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
-
-    You should have received a copy of the GNU General Public License
-    along with CopyQ.  If not, see <http://www.gnu.org/licenses/>.
-*/
-
-#ifndef TABWIDGET_H
-#define TABWIDGET_H
-
-#include <QHash>
+#include <QMap>
 #include <QTabBar>
 #include <QWidget>
-
-#include <memory>
 
 class QMainWindow;
 class QMimeData;
@@ -63,6 +44,8 @@ public:
     /** Return path of tab in tree or label in tab bar. */
     QString tabName(int tabIndex) const;
 
+    int tabIndex(const QString &tabName) const;
+
     void setTabName(int tabIndex, const QString &tabName);
 
     void setTabItemCountVisible(bool visible);
@@ -96,6 +79,7 @@ public:
     void setTabItemCount(const QString &tabName, int itemCount);
 
     void setTabsOrder(const QStringList &tabs);
+    void reorderTabs(const QStringList &tabs);
 
 signals:
     /// Tabs moved in tab bar.
@@ -107,7 +91,7 @@ signals:
     void tabRenamed(const QString &newName, int index);
     void currentChanged(int tabIndex, int oldTabIndex);
     void tabCloseRequested(int);
-    void dropItems(const QString &tabName, const QMimeData *data);
+    void dropItems(const QString &tabName, const QMimeData *data, bool *accepted);
 
 protected:
     bool eventFilter(QObject *object, QEvent *event) override;
@@ -135,11 +119,9 @@ private:
     bool m_hideTabBar;
 
     QStringList m_collapsedTabs;
-    QHash<QString, int> m_tabItemCounters;
+    QMap<QWidget*, int> m_tabItemCounters;
 
     bool m_showTabItemCount;
 
     bool m_ignoreCurrentTabChanges = false;
 };
-
-#endif // TABWIDGET_H

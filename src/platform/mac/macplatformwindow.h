@@ -1,37 +1,16 @@
-/*
-    Copyright (c) 2020, Lukas Holecek <hluk@email.cz>
+// SPDX-License-Identifier: GPL-3.0-or-later
 
-    This file is part of CopyQ.
+#pragma once
 
-    CopyQ is free software: you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation, either version 3 of the License, or
-    (at your option) any later version.
-
-    CopyQ is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
-
-    You should have received a copy of the GNU General Public License
-    along with CopyQ.  If not, see <http://www.gnu.org/licenses/>.
-*/
-
-#ifndef MACPLATFORMWINDOW_H
-#define MACPLATFORMWINDOW_H
+#include "objcstrong.h"
 
 #include "platform/platformwindow.h"
 
 // For WId
 #include <QWidget>
 
-#ifdef __OBJC__
 @class NSWindow;
 @class NSRunningApplication;
-#else
-using NSWindow = void;
-using NSRunningApplication = void;
-#endif
 
 class MacPlatformWindow final : public PlatformWindow
 {
@@ -47,19 +26,18 @@ public:
      *
      * On OS X, this gets the title of the application instead of the window.
      */
-    QString getTitle();
+    QString getTitle() override;
 
-    void raise();
-    void pasteClipboard();
-    void copy();
+    void raise() override;
+    bool pasteFromClipboard() override;
+    bool copyToClipboard() override;
+    bool matchesWidget(const QWidget *widget) const override;
 
 private:
     // Don't allow copies
     Q_DISABLE_COPY(MacPlatformWindow)
 
-    long int m_windowNumber;
-    NSWindow *m_window;
-    NSRunningApplication *m_runningApplication;
+    long int m_windowNumber = -1;
+    ObjCStrong<NSWindow> m_window;
+    ObjCStrong<NSRunningApplication> m_runningApplication;
 };
-
-#endif // MACPLATFORMWINDOW_H

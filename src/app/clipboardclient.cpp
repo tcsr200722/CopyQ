@@ -1,21 +1,4 @@
-/*
-    Copyright (c) 2020, Lukas Holecek <hluk@email.cz>
-
-    This file is part of CopyQ.
-
-    CopyQ is free software: you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation, either version 3 of the License, or
-    (at your option) any later version.
-
-    CopyQ is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
-
-    You should have received a copy of the GNU General Public License
-    along with CopyQ.  If not, see <http://www.gnu.org/licenses/>.
-*/
+// SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "clipboardclient.h"
 
@@ -26,6 +9,7 @@
 #include "common/common.h"
 #include "common/log.h"
 #include "common/textdata.h"
+#include "item/itemfactory.h"
 #include "platform/platformnativeinterface.h"
 #include "scriptable/scriptable.h"
 #include "scriptable/scriptableproxy.h"
@@ -42,30 +26,28 @@ QString messageCodeToString(int code)
 {
     switch (code) {
     case CommandFunctionCallReturnValue:
-        return "CommandFunctionCallReturnValue";
+        return QStringLiteral("CommandFunctionCallReturnValue");
     case CommandInputDialogFinished:
-        return "CommandInputDialogFinished";
+        return QStringLiteral("CommandInputDialogFinished");
     case CommandStop:
-        return "CommandStop";
+        return QStringLiteral("CommandStop");
     case CommandData:
-        return "CommandData";
+        return QStringLiteral("CommandData");
     default:
-        return QString::fromLatin1("Unknown(%1)").arg(code);
+        return QStringLiteral("Unknown(%1)").arg(code);
     }
 }
 
 QCoreApplication *createClientApplication(int &argc, char **argv, const QStringList &arguments)
 {
     // Clipboard access requires QApplication.
-    if ( arguments.size() > 1 && arguments[0] == "--clipboard-access" ) {
+    if ( arguments.size() > 1 && arguments[0] == QLatin1String("--clipboard-access") ) {
         const auto app = platformNativeInterface()
                 ->createClipboardProviderApplication(argc, argv);
-        setLogLabel(arguments[1].toUtf8());
         return app;
     }
 
     const auto app = platformNativeInterface()->createClientApplication(argc, argv);
-    setLogLabel("Client");
     return app;
 }
 
@@ -77,16 +59,12 @@ ClipboardClient::ClipboardClient(int &argc, char **argv, const QStringList &argu
     App::installTranslator();
 
     // Start script after QCoreApplication::exec().
-    auto timer = new QTimer(this);
-    timer->setSingleShot(true);
-    connect(timer, &QTimer::timeout, this, [&]() { start(arguments); });
-    connect(timer, &QTimer::timeout, timer, &QObject::deleteLater);
-    timer->start(0);
+    QTimer::singleShot(0, this, [this, &sessionName, &arguments]() { start(sessionName, arguments); });
 }
 
 void ClipboardClient::onMessageReceived(const QByteArray &data, int messageCode)
 {
-    COPYQ_LOG_VERBOSE( "Message received: " + messageCodeToString(messageCode) );
+    COPYQ_LOG_VERBOSE( QLatin1String("Message received: ") + messageCodeToString(messageCode) );
 
     switch (messageCode) {
     case CommandFunctionCallReturnValue:
@@ -99,7 +77,7 @@ void ClipboardClient::onMessageReceived(const QByteArray &data, int messageCode)
     }
 
     case CommandStop: {
-        exit(0);
+        emit stop();
         break;
     }
 
@@ -108,7 +86,7 @@ void ClipboardClient::onMessageReceived(const QByteArray &data, int messageCode)
         break;
 
     default:
-        log( "Unhandled message: " + messageCodeToString(messageCode), LogError );
+        log( QLatin1String("Unhandled message: ") + messageCodeToString(messageCode), LogError );
         break;
     }
 }
@@ -129,13 +107,18 @@ void ClipboardClient::onConnectionFailed()
     exit(1);
 }
 
-void ClipboardClient::start(const QStringList &arguments)
+void ClipboardClient::start(const QString &sessionName, const QStringList &arguments)
 {
+    ItemFactory itemFactory;
+    itemFactory.loadPlugins();
+    QSettings settings;
+    itemFactory.loadItemFactorySettings(&settings);
+
     QJSEngine engine;
     ScriptableProxy scriptableProxy(nullptr, nullptr);
-    Scriptable scriptable(&engine, &scriptableProxy);
+    Scriptable scriptable(&engine, &scriptableProxy, &itemFactory);
 
-    const auto serverName = clipboardServerName();
+    const auto serverName = clipboardServerName(sessionName);
     ClientSocket socket(serverName);
 
     connect( &socket, &ClientSocket::messageReceived,
@@ -147,27 +130,26 @@ void ClipboardClient::start(const QStringList &arguments)
 
     connect( &scriptableProxy, &ScriptableProxy::sendMessage,
              &socket, &ClientSocket::sendMessage );
+    connect( &socket, &ClientSocket::disconnected,
+             &scriptableProxy, &ScriptableProxy::disconnectClient );
 
     connect( this, &ClipboardClient::functionCallResultReceived,
              &scriptableProxy, &ScriptableProxy::setFunctionCallReturnValue );
     connect( this, &ClipboardClient::inputDialogFinished,
              &scriptableProxy, &ScriptableProxy::setInputDialogResult );
-
-    connect( &socket, &ClientSocket::disconnected,
-             &scriptable, &Scriptable::abort );
-    connect( &socket, &ClientSocket::disconnected,
-             &scriptableProxy, &ScriptableProxy::clientDisconnected );
+    connect( this, &ClipboardClient::stop,
+             &scriptable, [&scriptable](){scriptable.abortEvaluation();} );
 
     connect( this, &ClipboardClient::dataReceived,
              &scriptable, &Scriptable::dataReceived, Qt::QueuedConnection );
     connect( &scriptable, &Scriptable::receiveData,
-             &socket, [&]() {
+             &socket, [&socket]() {
                 socket.sendMessage(QByteArray(), CommandReceiveData);
              });
 
     bool hasActionId;
     auto actionId = qEnvironmentVariableIntValue("COPYQ_ACTION_ID", &hasActionId);
-    const auto actionName = getTextData( qgetenv("COPYQ_ACTION_NAME") );
+    const auto actionName = qEnvironmentVariable("COPYQ_ACTION_NAME");
 
     if ( socket.start() ) {
         if (hasActionId)
@@ -175,7 +157,8 @@ void ClipboardClient::start(const QStringList &arguments)
         scriptable.setActionName(actionName);
 
         const int exitCode = scriptable.executeArguments(arguments);
-        socket.disconnect(&scriptable);
+        socket.disconnect(&scriptableProxy);
+        scriptableProxy.disconnect(&scriptable);
         exit(exitCode);
     }
 }

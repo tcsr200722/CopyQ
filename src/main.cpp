@@ -1,27 +1,11 @@
-/*
-    Copyright (c) 2020, Lukas Holecek <hluk@email.cz>
-
-    This file is part of CopyQ.
-
-    CopyQ is free software: you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation, either version 3 of the License, or
-    (at your option) any later version.
-
-    CopyQ is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
-
-    You should have received a copy of the GNU General Public License
-    along with CopyQ.  If not, see <http://www.gnu.org/licenses/>.
-*/
+// SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "app/app.h"
 #include "app/applicationexceptionhandler.h"
 #include "app/clipboardclient.h"
 #include "app/clipboardserver.h"
 #include "common/commandstatus.h"
+#include "common/config.h"
 #include "common/log.h"
 #include "common/messagehandlerforqt.h"
 #include "common/textdata.h"
@@ -37,15 +21,28 @@
 #include <QProcess>
 #include <QSettings>
 
-#ifdef HAS_TESTS
-#  include "tests/tests.h"
-#endif // HAS_TESTS
-
 #include <exception>
+#include <cstring>
 
 Q_DECLARE_METATYPE(QByteArray*)
 
 namespace {
+
+enum class AppType {
+    Version,
+    Help,
+    Info,
+    Logs,
+    Server,
+    StartServerInBackground,
+    Client
+};
+
+struct AppArguments {
+    AppType appType;
+    QString sessionName;
+    QStringList arguments;
+};
 
 int evaluate(
         const QString &functionName,
@@ -53,10 +50,9 @@ int evaluate(
         const QString &sessionName)
 {
     App app( platformNativeInterface()->createConsoleApplication(argc, argv), sessionName );
-    setLogLabel("Prompt");
 
     QJSEngine engine;
-    Scriptable scriptable(&engine, nullptr);
+    Scriptable scriptable(&engine, nullptr, nullptr);
 
     QJSValue function = engine.globalObject().property(functionName);
     QJSValueList functionArguments;
@@ -66,20 +62,17 @@ int evaluate(
         functionArguments.append(argument);
 
     const auto result = function.call(functionArguments);
-    const bool hasUncaughtException = result.isError() || scriptable.hasUncaughtException();
+    const bool hasUncaughtException = result.isError() || engine.hasError();
 
-    const auto output = scriptable.fromString(result.toString());
-    if ( !output.isEmpty() && canUseStandardOutput() ) {
+    const auto output = scriptable.serializeScriptValue(result);
+    if ( !output.isEmpty() ) {
         QFile f;
-        if (hasUncaughtException)
-            f.open(stderr, QIODevice::WriteOnly);
-        else
-            f.open(stdout, QIODevice::WriteOnly);
-
-        f.write(output);
-        if ( !output.endsWith("\n") )
-            f.write("\n");
-        f.close();
+        if ( f.open(hasUncaughtException ? stderr : stdout, QIODevice::WriteOnly) ) {
+            f.write(output);
+            if ( !output.endsWith("\n") )
+                f.write("\n");
+            f.close();
+        }
     }
 
     const int exitCode = hasUncaughtException ? CommandException : 0;
@@ -100,14 +93,18 @@ bool containsOnlyValidCharacters(const QString &sessionName)
 bool isValidSessionName(const QString &sessionName)
 {
     return !sessionName.isNull() &&
-           sessionName.length() < 16 &&
+           sessionName.length() <= 16 &&
            containsOnlyValidCharacters(sessionName);
 }
 
 QString restoreSessionName(const QString &sessionId)
 {
-    const QSettings settings(QSettings::IniFormat, QSettings::UserScope, "copyq", "copyq_no_session");
-    const auto sessionNameKey = "session_" + sessionId;
+    const QSettings settings(
+        QSettings::IniFormat,
+        QSettings::UserScope,
+        QStringLiteral("copyq"),
+        QStringLiteral("copyq_no_session"));
+    const auto sessionNameKey = QLatin1String("session_") + sessionId;
     const auto sessionName = settings.value(sessionNameKey).toString();
     return sessionName;
 }
@@ -117,13 +114,13 @@ int startServer(int argc, char *argv[], QString sessionName)
     // By default, enable automatic screen scaling in Qt for high-DPI displays
     // (this works better at least in Windows).
     if ( qEnvironmentVariableIsEmpty("QT_AUTO_SCREEN_SCALE_FACTOR") )
-        qputenv("QT_AUTO_SCREEN_SCALE_FACTOR", "1");
+        qputenv("QT_AUTO_SCREEN_SCALE_FACTOR", QByteArrayLiteral("1"));
 
     auto qapp = platformNativeInterface()->createServerApplication(argc, argv);
     if ( qapp->isSessionRestored() ) {
         const auto sessionId = qapp->sessionId();
         sessionName = restoreSessionName(sessionId);
-        COPYQ_LOG( QString("Restoring session ID \"%1\", session name \"%2\"")
+        COPYQ_LOG( QStringLiteral("Restoring session ID \"%1\", session name \"%2\"")
                    .arg(sessionId, sessionName) );
         if ( !sessionName.isEmpty() && !isValidSessionName(sessionName) ) {
             log("Failed to restore session name", LogError);
@@ -135,20 +132,21 @@ int startServer(int argc, char *argv[], QString sessionName)
     return app.exec();
 }
 
-void startServerInBackground(const QString &applicationPath, QString sessionName)
+void startServerInBackground(const char *argv0, const QString &sessionName)
 {
-    const bool couldUseStandardOutput = canUseStandardOutput();
-    if (couldUseStandardOutput)
-        qputenv("COPYQ_NO_OUTPUT", "1");
-
-    const QStringList arguments{QString::fromLatin1("-s"), sessionName};
-    const bool started = QProcess::startDetached(applicationPath, arguments);
-
-    if (!couldUseStandardOutput)
-        qunsetenv("COPYQ_NO_OUTPUT");
+    // QCoreApplication is not yet instantiated. Resolve the $APPIMAGE path
+    // directly so the detached server launches via the AppImage entry point.
+#ifdef COPYQ_WITH_APPIMAGE
+    const QString appImage = qEnvironmentVariable("APPIMAGE");
+    const QString executable = appImage.isEmpty() ? QString::fromUtf8(argv0) : appImage;
+#else
+    const auto executable = QString::fromUtf8(argv0);
+#endif
+    const QStringList arguments{QStringLiteral("-s"), sessionName};
+    const bool started = QProcess::startDetached(executable, arguments);
 
     if (!started)
-        log( QLatin1String("Failed to start the server"), LogError );
+        log("Failed to start the server", LogError);
 }
 
 int startClient(int argc, char *argv[], const QStringList &arguments, const QString &sessionName)
@@ -159,125 +157,206 @@ int startClient(int argc, char *argv[], const QStringList &arguments, const QStr
 
 bool needsHelp(const QString &arg)
 {
-    return arg == "-h" ||
-           arg == "--help" ||
-           arg == "help";
+    return arg == QLatin1String("-h") ||
+           arg == QLatin1String("--help") ||
+           arg == QLatin1String("help");
 }
 
 bool needsVersion(const QString &arg)
 {
-    return arg == "-v" ||
-           arg == "--version" ||
-           arg == "version";
+    return arg == QLatin1String("-v") ||
+           arg == QLatin1String("--version") ||
+           arg == QLatin1String("version");
 }
 
 bool needsInfo(const QString &arg)
 {
-    return arg == "--info" ||
-           arg == "info";
+    return arg == QLatin1String("--info") ||
+           arg == QLatin1String("info");
 }
 
 bool needsLogs(const QString &arg)
 {
-    return arg == "--logs" ||
-           arg == "logs";
+    return arg == QLatin1String("--logs") ||
+           arg == QLatin1String("logs");
 }
 
 bool needsStartServer(const QString &arg)
 {
-    return arg == "--start-server";
+    return arg == QLatin1String("--start-server");
 }
 
-#ifdef HAS_TESTS
-bool needsTests(const QString &arg)
+QString takeSessionName(QStringList &arguments)
 {
-    return arg == "--tests" ||
-           arg == "tests";
+    if (arguments.size() > 0) {
+        if ( arguments[0] == QLatin1String("-s")
+          || arguments[0] == QLatin1String("--session")
+          || arguments[0] == QLatin1String("session") )
+        {
+            arguments.removeAt(0);
+            return arguments.takeAt(0);
+        }
+
+        if ( arguments[0].startsWith(QLatin1String("--session=")) ) {
+            const QString sessionArg = arguments.takeAt(0);
+            return sessionArg.mid(std::char_traits<char>::length("--session="));
+        }
+
+        // Skip session arguments passed from session manager.
+        if (arguments.size() == 2 && arguments[0] == QLatin1String("-session"))
+            arguments.clear();
+    }
+
+    return qEnvironmentVariable("COPYQ_SESSION_NAME", QStringLiteral(""));
 }
-#endif
 
-QString getSessionName(const QStringList &arguments, int *skipArguments)
+AppArguments parseArguments(int argc, char **argv)
 {
-    const QString firstArgument = arguments.value(0);
-    *skipArguments = 0;
+    QStringList arguments =
+        platformNativeInterface()->getCommandLineArguments(argc, argv);
 
-    if (firstArgument == "-s" || firstArgument == "--session" || firstArgument == "session") {
-        *skipArguments = 2;
-        return arguments.value(1);
+    const QString sessionName = takeSessionName(arguments);
+
+    if (arguments.isEmpty())
+        return {AppType::Server, sessionName, {}};
+
+    const QString &arg = arguments[0];
+
+    if ( needsStartServer(arg) )
+        return {AppType::StartServerInBackground, sessionName, arguments.mid(1)};
+
+    if ( needsVersion(arg) )
+        return {AppType::Version, sessionName, arguments.mid(1)};
+
+    if ( needsHelp(arg) )
+        return {AppType::Help, sessionName, arguments.mid(1)};
+
+    if ( needsInfo(arg) )
+        return {AppType::Info, sessionName, arguments.mid(1)};
+
+    if ( needsLogs(arg) )
+        return {AppType::Logs, sessionName, arguments.mid(1)};
+
+    // If argument was specified and server is running
+    // then run this process as client.
+    return {AppType::Client, sessionName, arguments};
+}
+
+/// Return log label for client based on the command called if available
+/// Examples:
+/// - cmd/monitorClipboard
+/// - cmd/synchronizeToSelection
+/// - cmd/copy
+QByteArray logLabelForClient(const QStringList &arguments)
+{
+    int i = 0;
+    for (; i < arguments.size(); ++i) {
+        const auto &arg = arguments[i];
+        if (arg == QLatin1String("tab") || arg == QLatin1String("separator")) {
+            ++i;
+            break;
+        }
+        if (!arg.startsWith('-') && arg != QLatin1String("eval"))
+            break;
     }
-
-    if ( firstArgument.startsWith("--session=") ) {
-        *skipArguments = 1;
-        return firstArgument.mid( firstArgument.indexOf('=') + 1 );
+    if (i < arguments.size()) {
+        const auto &command = arguments[i];
+        for (const auto &c : command) {
+            if ( !c.isLetterOrNumber() && c != '_' )
+                return "Client";
+        }
+        return "cmd/" + command.toUtf8();
     }
+    return "Client";
+}
 
-    // Skip session arguments passed from session manager.
-    if (arguments.size() == 2 && firstArgument == "-session")
-        *skipArguments = 2;
-
-    return getTextData( qgetenv("COPYQ_SESSION_NAME") );
+QByteArray logLabelForType(AppType appType, const QStringList &arguments)
+{
+    switch (appType) {
+    case AppType::Server:
+        return "Server";
+    case AppType::Client:
+        return logLabelForClient(arguments);
+    case AppType::StartServerInBackground:
+        return logLabelForClient(arguments);
+    default:
+        return "Prompt";
+    }
 }
 
 int startApplication(int argc, char **argv)
 {
+#ifdef COPYQ_WITH_APPIMAGE
+    // Override QT_PLUGIN_PATH so the bundled Qt plugins are used instead of
+    // any host-provided plugins (which may be linked against an incompatible
+    // Qt version).  The linuxdeploy AppRun sets APPDIR and LD_LIBRARY_PATH
+    // but does not handle Qt-specific env vars — qt.conf alone is not
+    // sufficient when the host session sets QT_PLUGIN_PATH.
+    if (const QByteArray appDir = qgetenv("APPDIR"); !appDir.isEmpty())
+        qputenv("QT_PLUGIN_PATH", appDir + "/usr/plugins");
+#endif
+
+    setSessionName(QString());
+
+    const AppArguments args = parseArguments(argc, argv);
+    // Qt normalizes --session to -session and treats it as a Session Manager
+    // restore request. Skip the "--" prefix so Qt sees "session" instead.
+    if (!args.sessionName.isEmpty() && argc > 1
+        && std::strcmp(argv[1], "--session") == 0)
+    {
+        argv[1] += 2;
+    }
+
+    setLogLabel( logLabelForType(args.appType, args.arguments) );
     installMessageHandlerForQt();
 
 #ifdef Q_OS_UNIX
     if ( !initUnixSignalHandler() )
-        log( QString("Failed to create handler for Unix signals!"), LogError );
+        log("Failed to create handler for Unix signals!", LogError);
 #endif
 
-    const QStringList arguments =
-            platformNativeInterface()->getCommandLineArguments(argc, argv);
-
-    // Get session name (default is empty).
-    int skipArguments;
-    const QString sessionName = getSessionName(arguments, &skipArguments);
-
-    if ( !isValidSessionName(sessionName) ) {
+    if ( !isValidSessionName(args.sessionName) ) {
         log( QObject::tr("Session name must contain at most 16 characters\n"
                          "which can be letters, digits, '-' or '_'!"), LogError );
         return 2;
     }
 
-    // Print version, help or run tests.
-    if ( arguments.size() > skipArguments ) {
-        const auto arg = arguments[skipArguments];
+    if ( !args.sessionName.isEmpty() )
+        setSessionName(args.sessionName);
 
-        if ( needsStartServer(arg) ) {
-            startServerInBackground( QString::fromUtf8(argv[0]), sessionName );
-            return skipArguments + 1 == arguments.size() ? 0
-                : startClient(argc, argv, arguments.mid(skipArguments + 1), sessionName);
-        }
-
-        if ( needsVersion(arg) )
-            return evaluate( "version", QStringList(), argc, argv, sessionName );
-
-        if ( needsHelp(arg) )
-            return evaluate( "help", arguments.mid(skipArguments + 1), argc, argv, sessionName );
-
-        if ( needsInfo(arg) )
-            return evaluate( "info", arguments.mid(skipArguments + 1), argc, argv, sessionName );
-
-        if ( needsLogs(arg) )
-            return evaluate( "logs", arguments.mid(skipArguments + 1), argc, argv, sessionName );
-
-#ifdef HAS_TESTS
-        if ( needsTests(arg) ) {
-            // Skip the "tests" argument and pass the rest to tests.
-            return runTests(argc - skipArguments - 1, argv + skipArguments + 1);
-        }
-#endif
-    }
-
+    switch (args.appType) {
     // If server hasn't been run yet and no argument were specified
     // then run this process as server.
-    if ( skipArguments == arguments.size() )
-        return startServer(argc, argv, sessionName);
+    case AppType::Server:
+        // Set before QApplication construction so portal registration and
+        // taskbar icon matching use the correct app ID.
+        QGuiApplication::setDesktopFileName(QStringLiteral("com.github.hluk.copyq"));
+        return startServer(argc, argv, args.sessionName);
 
     // If argument was specified and server is running
     // then run this process as client.
-    return startClient(argc, argv, arguments.mid(skipArguments), sessionName);
+    case AppType::Client:
+        return startClient(argc, argv, args.arguments, args.sessionName);
+
+    case AppType::StartServerInBackground:
+        startServerInBackground(argv[0], args.sessionName);
+        if (args.arguments.isEmpty())
+            return 0;
+        return startClient(argc, argv, args.arguments, args.sessionName);
+
+    case AppType::Version:
+        return evaluate( QStringLiteral("version"), {}, argc, argv, args.sessionName );
+
+    case AppType::Help:
+        return evaluate( QStringLiteral("help"), args.arguments, argc, argv, args.sessionName );
+
+    case AppType::Info:
+        return evaluate( QStringLiteral("info"), args.arguments, argc, argv, args.sessionName );
+
+    case AppType::Logs:
+        return evaluate( QStringLiteral("logs"), args.arguments, argc, argv, args.sessionName );
+    }
+    return -1;
 }
 
 } // namespace

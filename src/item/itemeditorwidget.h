@@ -1,32 +1,13 @@
-/*
-    Copyright (c) 2020, Lukas Holecek <hluk@email.cz>
+// SPDX-License-Identifier: GPL-3.0-or-later
 
-    This file is part of CopyQ.
+#pragma once
 
-    CopyQ is free software: you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation, either version 3 of the License, or
-    (at your option) any later version.
-
-    CopyQ is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
-
-    You should have received a copy of the GNU General Public License
-    along with CopyQ.  If not, see <http://www.gnu.org/licenses/>.
-*/
-
-#ifndef ITEMEDITORWIDGET_H
-#define ITEMEDITORWIDGET_H
 
 #include "item/itemfilter.h"
-#include "item/itemwidget.h"
+#include "gui/menuitems.h"
 
 #include <QPersistentModelIndex>
 #include <QTextEdit>
-
-#include <memory>
 
 class ItemWidget;
 class QAbstractItemModel;
@@ -42,7 +23,7 @@ class ItemEditorWidget final : public QTextEdit
 {
     Q_OBJECT
 public:
-    ItemEditorWidget(const QModelIndex &index, bool editNotes, QWidget *parent = nullptr);
+    ItemEditorWidget(const QModelIndex &index, const QString &format, QWidget *parent = nullptr);
 
     bool isValid() const;
 
@@ -62,7 +43,7 @@ public:
 
     void findPrevious();
 
-    QWidget *createToolbar(QWidget *parent);
+    QWidget *createToolbar(QWidget *parent, const MenuItems &menuItems);
 
 signals:
     void save();
@@ -93,8 +74,6 @@ private:
 
     QPersistentModelIndex m_index;
     bool m_saveOnReturnKey;
-    bool m_editNotes;
+    QString m_format;
     ItemFilterPtr m_filter;
 };
-
-#endif // ITEMEDITORWIDGET_H

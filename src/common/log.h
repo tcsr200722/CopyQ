@@ -1,27 +1,12 @@
-/*
-    Copyright (c) 2020, Lukas Holecek <hluk@email.cz>
+// SPDX-License-Identifier: GPL-3.0-or-later
+#pragma once
 
-    This file is part of CopyQ.
-
-    CopyQ is free software: you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation, either version 3 of the License, or
-    (at your option) any later version.
-
-    CopyQ is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
-
-    You should have received a copy of the GNU General Public License
-    along with CopyQ.  If not, see <http://www.gnu.org/licenses/>.
-*/
-
-#ifndef LOG_H
-#define LOG_H
 
 class QByteArray;
+class QFileInfo;
 class QString;
+template <class T> class QList;
+using QFileInfoList = QList<QFileInfo>;
 
 enum LogLevel {
     LogAlways,
@@ -32,15 +17,20 @@ enum LogLevel {
     LogTrace
 };
 
-void initLogging();
+constexpr int logFileSize = 512 * 1024;
+constexpr int logFileCount = 10;
 
+QString getDefaultLogFilePath();
 const QString &logFileName();
+QFileInfoList logFileNames();
 
 QByteArray readLogFile(int maxReadSize);
 
-bool removeLogFiles();
+bool dropLogsToFileCountAndSize(int maxFileCount, int keepMaxSize);
 
 void createSessionMutex();
+
+int getLogLevel();
 
 bool hasLogLevel(LogLevel level);
 
@@ -49,13 +39,10 @@ QByteArray logLevelLabel(LogLevel level);
 #define COPYQ_LOG(msg) do { if ( hasLogLevel(LogDebug) ) log(msg, LogDebug); } while (false)
 #define COPYQ_LOG_VERBOSE(msg) do { if ( hasLogLevel(LogTrace) ) log(msg, LogTrace); } while (false)
 
+void log(const char *text, LogLevel level = LogNote);
 void log(const QString &text, LogLevel level = LogNote);
+void log(const QByteArray &text, LogLevel level = LogNote);
 
 void setLogLabel(const QByteArray &name);
 
 QByteArray &logLabel();
-
-/// True if stdout and stderr can be used.
-bool canUseStandardOutput();
-
-#endif // LOG_H

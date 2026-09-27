@@ -1,21 +1,4 @@
-/*
-    Copyright (c) 2020, Lukas Holecek <hluk@email.cz>
-
-    This file is part of CopyQ.
-
-    CopyQ is free software: you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation, either version 3 of the License, or
-    (at your option) any later version.
-
-    CopyQ is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
-
-    You should have received a copy of the GNU General Public License
-    along with CopyQ.  If not, see <http://www.gnu.org/licenses/>.
-*/
+// SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "commandsyntaxhighlighter.h"
 
@@ -93,7 +76,7 @@ public:
         , m_reFunctions(createRegExp(scriptableFunctions()))
         , m_reKeywords(createRegExp(scriptableKeywords()))
         , m_reLabels(commandLabelRegExp())
-        , m_reConstants("\\b0x[0-9A-Fa-f]+|(?:\\b|%)\\d+|\\btrue\\b|\\bfalse\\b")
+        , m_reConstants(R"(\b0x[0-9A-Fa-f](?:_?[0-9A-Fa-f])*|(?:\b|%)\d(?:_?\d)*|\btrue\b|\bfalse\b)")
     {
     }
 
@@ -215,8 +198,14 @@ private:
                     if (i == -1)
                         i = text.size();
 
+                    --i;
                     format(a, i);
 
+                    setCurrentBlockState(Code);
+                } else if (c == '\n' || i + 1 == text.size()) {
+                    // The '/' was not regex start, since there is no ending
+                    // '/' on the same line.
+                    i = a;
                     setCurrentBlockState(Code);
                 }
             } else if (c == '\\') {

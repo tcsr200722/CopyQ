@@ -45,13 +45,93 @@ on global shortcut Win+Alt+T.
     Icon=\xf017
     Name=Paste Current Time
 
+Paste Clipboard Items in Order
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The following commands create a simple paste queue. The first command
+automatically stores each new clipboard item in the ``Paste Queue`` tab.
+The second command pastes the oldest queued item and removes it from the
+queue on global shortcut Win+Alt+V.
+
+.. code-block:: ini
+
+    [Command]
+    Name=Add Clipboard to Paste Queue
+    Command="
+        copyq:
+        tab('Paste Queue')
+        write(0, unpack(input()))"
+    Automatic=true
+    Icon=\xf03a
+    Input=application/x-copyq-item
+
+    [Command]
+    Name=Paste Next Queued Item
+    Command="
+        copyq:
+        tab('Paste Queue')
+        var row = size() - 1
+        if (row < 0) {
+            popup('Paste Queue', 'No queued items')
+            abort()
+        }
+
+        var item = getItem(row)
+        copy(item)
+        try {
+            paste()
+        } catch (e) {
+            popup('Pasting Failed', e)
+            abort()
+        }
+        remove(row)"
+    GlobalShortcut=meta+alt+v
+    Icon=\xf0ea
+
 Play Sound when Copying to Clipboard
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Following command will play an audio file whenever something is copied
-clipboard.
+The following commands will play an audio file whenever something is
+copied to the clipboard.
 
-On Windows:
+Built-in (Cross-Platform)
+^^^^^^^^^^^^^^^^^^^^^^^^^
+
+The built-in audio capabilities are available since version 14.0.0 and supports
+WAV, MP3 and FLAC formats on all platforms.
+
+.. code-block:: ini
+
+    [Command]
+    Name=Play Sound on Copy
+    Command="
+         copyq:
+         playSound('/path/to/notification.wav')"
+    Automatic=true
+    Icon=\xf028
+
+To play at a lower volume:
+
+.. code-block:: ini
+
+    [Command]
+    Name=Play Sound on Copy (Quiet)
+    Command="
+         copyq:
+         playSound({file: '/path/to/notification.wav', volume: 25})"
+    Automatic=true
+    Icon=\xf028
+
+Alternatively, if audio is not available in the app itself, you can use
+external utilities to play audio file mentioned below.
+
+Windows
+^^^^^^^
+
+Plays the user-specified audio file whenever something is copied to the
+clipboard. By default, this adds to the sound associated to native
+notifications rather than replacing it, so you may want to use Qt
+(non-native) notifications to use this.
 
 .. code-block:: ini
 
@@ -63,7 +143,10 @@ On Windows:
     Automatic=true
     Icon=\xf028
 
-On Linux (requires VLC multimedia player):
+GNU/Linux
+^^^^^^^^^
+
+Requires VLC multimedia player:
 
 .. code-block:: ini
 
@@ -74,6 +157,8 @@ On Linux (requires VLC multimedia player):
          cvlc --play-and-exit ~/audio/example.mp3"
     Automatic=true
     Icon=\xf028
+
+`Alternative using the mpv player <https://github.com/hluk/copyq-commands/blob/master/commands/play-sound-when-copying-to-clipboard-linux.ini>`__
 
 Edit and Paste
 ~~~~~~~~~~~~~~
@@ -122,25 +207,21 @@ and invoked from menu (or using custom shortcut).
 Linkify
 ~~~~~~~
 
-Creates interactive link from plain text.
+Stores an item with interactive link from plain text URL copied to clipboard.
 
 .. code-block:: ini
 
     [Command]
-    Name=Linkify
-    Match=^(https?|ftps?|file|mailto)://
+    Automatic=true
     Command="
         copyq:
-        var link = str(input());
-        var href = '<a href=\"###\">###</a>';
-        write(
-          'text/plain', link,
-          'text/html', href.replace(/###/g, link)
-        );"
-    Input=text/plain
-    Automatic=true
-    Remove=true
+        const link = str(input());
+        const href = `<a href=\"${link}\">${link}</a>`;
+        setData('text/html', href);"
     Icon=\xf127
+    Input=text/plain
+    Match=^(https?|ftps?|file|mailto)://
+    Name=Linkify
 
 Highlight Text
 ~~~~~~~~~~~~~~
@@ -156,7 +237,7 @@ something else than ``text``).
         copyq:
         x = 'text'
         style = 'background: yellow; text-decoration: underline'
-        
+
         text = str(input())
         x = x.toLowerCase()
         lowertext = text.toLowerCase()
@@ -165,7 +246,7 @@ something else than ``text``).
         esc = function(a, b) {
             return escapeHTML( text.substr(a, b - a) )
         }
-        
+
         while (1) {
             b = lowertext.indexOf(x, a)
             if (b != -1) {
@@ -176,7 +257,7 @@ something else than ``text``).
             }
             a = b + x.length;
         }
-        
+
         tab( selectedtab() )
         write(
             index(),
@@ -222,10 +303,10 @@ Pass to text to `Google Translate <https://translate.google.com/>`__.
         copyq:
         text = str(input())
         url = \"https://translate.google.com/#auto/en/???\"
-        
+
         x = url.replace(\"???\", encodeURIComponent(text))
         html = '<html><head><meta http-equiv=\"refresh\" content=\"0;url=' + x + '\" /></head></html>'
-        
+
         tab(selectedtab())
         write(index() + 1, \"text/html\", html)"
     Input=text/plain
@@ -252,7 +333,7 @@ Paste selected items and clear clipboard.
         } else {
             select(items[0])
         }
-        
+
         hide()
         paste()
         copy('')"
@@ -274,9 +355,9 @@ Render math equations using `MathJax <http://www.mathjax.org/>`__ (e.g.
         copyq:
         text = str(input())
         js = 'http://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML'
-        
+
         html = '<html><head><script type=\"text/javascript\" src=\"' + js + '\"></script></head><body>' + escapeHTML(text) + '</body></html>';
-        
+
         tab(selectedtab())
         write(index() + 1, 'text/html', html)"
     Input=text/plain
@@ -348,39 +429,23 @@ Replace All Occurrences in Selected Text
 .. code-block:: ini
 
     [Command]
-    Name=Replace in Selection
     Command="
         copyq:
-        // Copy without changing Linux mouse selection (on Windows you can use "copy" instead).
-        function copy2() {
-          try {
-            var x = config('copy_clipboard')
-            config('copy_clipboard', false)
-            try {
-              copy.apply(this, arguments)
-            } finally {
-              config('copy_clipboard', x)
-            }
-          } catch(e) {
-            copy.apply(this, arguments)
-          }
-        }
-       
-        copy2()
-        var text = str(clipboard())
-       
+        copy();
+        const text = str(clipboard());
         if (text) {
-          var r1 = 'Text'
-          var r2 = 'Replace with'
-          var reply = dialog(r1, '', r2, '')
-       
+          const r1 = 'Text';
+          const r2 = 'Replace with';
+          const reply = dialog(r1, '', r2, '');
           if (reply) {
-            copy2(text.replace(new RegExp(reply[r1], 'g'), reply[r2]))
-            paste()
+            copy(text.replace(new RegExp(reply[r1], 'g'), reply[r2]));
+            paste();
           }
         }"
-    Icon=\xf040
-    GlobalShortcut=Meta+Alt+R
+    GlobalShortcut=meta+alt+r
+    Icon=
+    IsGlobalShortcut=true
+    Name=Replace in Selection
 
 Copy Nth Item
 ~~~~~~~~~~~~~
@@ -459,13 +524,13 @@ commands are not invoked.
         copyq:
         var option = 'disable_monitoring'
         var disabled = str(settings(option)) === 'true'
-        
+
         if (str(data('application/x-copyq-shortcut'))) {
           disabled = !disabled
           settings(option, disabled)
           popup('', disabled ? 'Monitoring disabled' : 'Monitoring enabled')
         }
-        
+
         if (disabled) {
           disable()
           ignore()
@@ -509,7 +574,7 @@ Shows copy time of new items in tag ("Tags" plugin must be enabled in
         copyq:
         var time = dateString('yyyy-MM-dd hh:mm:ss')
         setData('application/x-copyq-user-copy-time', time)
-        
+
         var tagsMime = 'application/x-copyq-tags'
         var tags = str(data(tagsMime)) + ', ' + time
         setData(tagsMime, tags)"
@@ -528,7 +593,7 @@ Toggles highlighting of selected items.
         copyq:
         var color = 'rgba(255, 255, 0, 0.5)'
         var mime = 'application/x-copyq-color'
-        
+
         var firstSelectedItem = selectedItems()[0]
         var currentColor = str(read(mime, firstSelectedItem))
         if (currentColor != color)
@@ -550,16 +615,16 @@ Change Upper/Lower Case of Selected Text
         copyq:
         if (!copy())
           abort()
-        
+
         var text = str(clipboard())
-        
+
         var newText = text.toUpperCase()
         if (text == newText)
           newText = text.toLowerCase()
-        
+
         if (text == newText)
           abort();
-        
+
         copy(newText)
         paste()"
     GlobalShortcut=meta+ctrl+u
@@ -574,19 +639,22 @@ Change Copied Text to Title Case
 .. code-block:: ini
 
     [Command]
+    Name=Paste as title case
     Command="
-      copyq: 
+        copyq:
         function toTitleCase(str) {
           return str.replace(
-            /\w\S*/g,
+            /\\w\\S*/g,
             function(txt) {
               return txt.charAt(0).toUpperCase() + txt.substr(1).toLowerCase();
             }
           );
         }
         copy(toTitleCase(str(input())))
-        paste()"
-    GlobalShortcut=meta+ctrl+e
-    Icon=\xf034
-    Name=Title Case
-
+               paste()
+        "
+    Input=text/plain
+    IsGlobalShortcut=true
+    HideWindow=true
+    Icon=\xf15b
+    GlobalShortcut=meta+ctrl+t

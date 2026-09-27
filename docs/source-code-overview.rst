@@ -65,8 +65,8 @@ Clients and Scripting
 ~~~~~~~~~~~~~~~~~~~~~
 
 Scripting language is `Qt
-Script <https://doc.qt.io/qt-5/qtscript-index.html>`__ (mostly same
-syntax and functions as JavaScript).
+Script <https://doc.qt.io/qt-6/qtqml-javascript-functionlist.html>`__ (mostly
+same syntax and functions as JavaScript).
 
 API is described in :ref:`scripting-api`.
 
@@ -196,15 +196,13 @@ CI servers.
     -  Builds and runs tests for Linux binaries.
 
 -  `GitLab CI <https://gitlab.com/CopyQ/CopyQ/builds>`__
-    -  Builds and runs tests for Ubuntu 16.04 binaries.
+    -  Builds and runs tests for Ubuntu 22.04 binaries.
     -  Screenshots are taken while GUI tests are running. These are
        available if a test fails.
 
--  `AppVeyor <https://ci.appveyor.com/project/hluk/copyq>`__
-    -  Builds installers and portable packages for Windows.
+-  `GitHub Actions <https://github.com/hluk/CopyQ/actions>`__
+    -  Builds and runs tests for Windows.
     -  Provides downloads for recent commits.
-    -  Release build are based on gcc-compiled binaries (Visual Studio
-       builds are also available).
 
 -  `OBS Linux Packages <https://build.opensuse.org/project/show/home:lukho:copyq>`__
     -  Builds release packages for various Linux distributions.
@@ -212,5 +210,5 @@ CI servers.
 -  `Beta OBS Linux Packages <https://build.opensuse.org/project/show/home:lukho:copyq-beta>`__
     -  Builds beta and unstable packages for various Linux distributions.
 
--  `Coveralls <https://coveralls.io/github/hluk/CopyQ>`__
+-  `Codecov <https://app.codecov.io/gh/hluk/CopyQ>`__
     -  Contains coverage report from tests run with GitHub Actions.

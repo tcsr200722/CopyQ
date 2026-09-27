@@ -1,23 +1,6 @@
-/*
-    Copyright (c) 2020, Lukas Holecek <hluk@email.cz>
+// SPDX-License-Identifier: GPL-3.0-or-later
+#pragma once
 
-    This file is part of CopyQ.
-
-    CopyQ is free software: you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation, either version 3 of the License, or
-    (at your option) any later version.
-
-    CopyQ is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
-
-    You should have received a copy of the GNU General Public License
-    along with CopyQ.  If not, see <http://www.gnu.org/licenses/>.
-*/
-#ifndef MENUITEMS_H
-#define MENUITEMS_H
 
 #include <QList>
 #include <QKeySequence>
@@ -45,6 +28,20 @@ enum Id {
     Edit_PasteItems,
     Edit_CopySelectedItems,
     Edit_FindItems,
+
+    Editor_Save,
+    Editor_Cancel,
+    Editor_Undo,
+    Editor_Redo,
+    Editor_Font,
+    Editor_Bold,
+    Editor_Italic,
+    Editor_Underline,
+    Editor_Strikethrough,
+    Editor_Foreground,
+    Editor_Background,
+    Editor_EraseStyle,
+    Editor_Search,
 
     Item_MoveToClipboard,
     Item_ShowContent,
@@ -84,6 +81,13 @@ struct MenuItem {
     QString settingsKey;
     QKeySequence defaultShortcut;
     QList<QKeySequence> shortcuts;
+
+    MenuItem() = default;
+    ~MenuItem() = default;
+    MenuItem(const MenuItem &) = default;
+    MenuItem &operator=(const MenuItem &) = default;
+    MenuItem(MenuItem &&) noexcept = default;
+    MenuItem &operator=(MenuItem &&) noexcept = default;
 };
 
 using MenuItems = std::array<MenuItem, Actions::Count>;
@@ -91,5 +95,3 @@ using MenuItems = std::array<MenuItem, Actions::Count>;
 MenuItems menuItems();
 
 void loadShortcuts(MenuItems *items, const QSettings &settings);
-
-#endif // MENUITEMS_H

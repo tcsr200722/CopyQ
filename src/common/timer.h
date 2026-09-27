@@ -1,5 +1,4 @@
-#ifndef TIMER_H
-#define TIMER_H
+#pragma once
 
 #include <QTimer>
 
@@ -10,8 +9,10 @@ void initSingleShotTimer(QTimer *timer, int milliseconds, const Receiver *receiv
     timer->setInterval(milliseconds);
 
     Q_ASSERT(receiver);
-    if (receiver)
-        QObject::connect( timer, &QTimer::timeout, receiver, slot, Qt::UniqueConnection );
-}
+    if (!receiver)
+        return;
 
-#endif // TIMER_H
+    // Unique connection only works with member functions.
+    const auto flags = std::is_invocable<Slot&>() ? Qt::AutoConnection : Qt::UniqueConnection;
+    QObject::connect(timer, &QTimer::timeout, receiver, slot, flags);
+}

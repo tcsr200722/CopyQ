@@ -1,21 +1,4 @@
-/*
-    Copyright (c) 2020, Lukas Holecek <hluk@email.cz>
-
-    This file is part of CopyQ.
-
-    CopyQ is free software: you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation, either version 3 of the License, or
-    (at your option) any later version.
-
-    CopyQ is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
-
-    You should have received a copy of the GNU General Public License
-    along with CopyQ.  If not, see <http://www.gnu.org/licenses/>.
-*/
+// SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "platform/platformcommon.h"
 #include "winplatformwindow.h"
@@ -28,6 +11,7 @@
 #include <QElapsedTimer>
 #include <QString>
 #include <QVector>
+#include <QWidget>
 
 namespace {
 
@@ -67,7 +51,12 @@ QString windowLogText(QString text, HWND window)
     return text;
 }
 
-void logWindow(const char *text, HWND window)
+void logWindowWarning(const char *text, HWND window)
+{
+    log( windowLogText(text, window), LogWarning );
+}
+
+void logWindowDebug(const char *text, HWND window)
 {
     COPYQ_LOG( windowLogText(text, window) );
 }
@@ -75,14 +64,14 @@ void logWindow(const char *text, HWND window)
 bool raiseWindowHelper(HWND window)
 {
     if (!SetForegroundWindow(window)) {
-        logWindow("Failed to raise:  SetForegroundWindow() == false", window);
+        logWindowWarning("Failed to raise: SetForegroundWindow() == false", window);
         return false;
     }
 
     SetWindowPos(window, HWND_TOP, 0, 0, 0, 0,
                  SWP_DRAWFRAME | SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW);
 
-    logWindow("Raised", window);
+    logWindowDebug("Raised", window);
 
     return true;
 }
@@ -90,22 +79,22 @@ bool raiseWindowHelper(HWND window)
 bool raiseWindow(HWND window)
 {
     if (!IsWindowVisible(window)) {
-        logWindow("Failed to raise: IsWindowVisible() == false", window);
+        logWindowWarning("Failed to raise: IsWindowVisible() == false", window);
         return false;
     }
 
     // WORKAROUND: Set foreground window if even this process is not in foreground.
     const auto thisThreadId = GetCurrentThreadId();
-    const auto foregroundThreadId = GetWindowThreadProcessId(GetForegroundWindow(), NULL);
+    const auto foregroundThreadId = GetWindowThreadProcessId(GetForegroundWindow(), nullptr);
     if (thisThreadId != foregroundThreadId) {
         if ( AttachThreadInput(thisThreadId, foregroundThreadId, true) ) {
-            logWindow("Attached foreground thread", window);
+            logWindowDebug("Attached foreground thread", window);
             const bool result = raiseWindowHelper(window);
             AttachThreadInput(thisThreadId, foregroundThreadId, false);
             return result;
         }
 
-        logWindow("Failed to attach foreground thread", window);
+        logWindowDebug("Failed to attach foreground thread", window);
     }
 
     return raiseWindowHelper(window);
@@ -118,7 +107,9 @@ bool isKeyPressed(int key)
 
 bool isModifierPressed()
 {
-    return isKeyPressed(VK_LCONTROL)
+    return isKeyPressed(VK_LWIN)
+        || isKeyPressed(VK_RWIN)
+        || isKeyPressed(VK_LCONTROL)
         || isKeyPressed(VK_RCONTROL)
         || isKeyPressed(VK_LSHIFT)
         || isKeyPressed(VK_RSHIFT)
@@ -145,11 +136,9 @@ bool sendInputs(QVector<INPUT> input, HWND wnd)
 {
     const UINT numberOfAddedEvents = SendInput( input.size(), input.data(), sizeof(INPUT) );
     if (numberOfAddedEvents == 0u) {
-        logWindow("Failed to paste", wnd);
+        logWindowWarning("Failed to simulate key events", wnd);
         return false;
     }
-
-    logWindow("Paste successful", wnd);
     return true;
 }
 
@@ -159,6 +148,14 @@ WinPlatformWindow::WinPlatformWindow(HWND window)
     : m_window(window)
 {
 }
+
+bool WinPlatformWindow::matchesWidget(const QWidget *widget) const
+{
+    return widget
+        && widget->windowHandle()
+        && reinterpret_cast<HWND>(widget->winId()) == m_window;
+}
+
 
 QString WinPlatformWindow::getTitle()
 {
@@ -170,64 +167,69 @@ void WinPlatformWindow::raise()
     raiseWindow(m_window);
 }
 
-void WinPlatformWindow::pasteClipboard()
+bool WinPlatformWindow::pasteFromClipboard()
 {
     const AppConfig config;
 
     if ( pasteWithCtrlV(*this, config) )
-        sendKeyPress(VK_LCONTROL, 'V', config);
-    else
-        sendKeyPress(VK_LSHIFT, VK_INSERT, config);
+        return sendKeyPress(VK_LCONTROL, 'V', config);
+
+    return sendKeyPress(VK_LSHIFT, VK_INSERT, config);
 }
 
-void WinPlatformWindow::copy()
+bool WinPlatformWindow::copyToClipboard()
 {
     const AppConfig config;
 
     const DWORD clipboardSequenceNumber = GetClipboardSequenceNumber();
-    sendKeyPress(VK_LCONTROL, 'C', config);
+    if ( !sendKeyPress(VK_LCONTROL, 'C', config) )
+        return false;
 
     // Wait for clipboard to change.
     QElapsedTimer t;
     t.start();
     while ( clipboardSequenceNumber == GetClipboardSequenceNumber() && t.elapsed() < 2000 )
         QApplication::processEvents(QEventLoop::AllEvents, 100);
+
+    return clipboardSequenceNumber != GetClipboardSequenceNumber();
 }
 
-void WinPlatformWindow::sendKeyPress(WORD modifier, WORD key, const AppConfig &config)
+bool WinPlatformWindow::sendKeyPress(WORD modifier, WORD key, const AppConfig &config)
 {
     waitMs(config.option<Config::window_wait_before_raise_ms>());
 
     if (!raiseWindow(m_window))
-        return;
+        return false;
 
     waitMs(config.option<Config::window_wait_after_raised_ms>());
 
     // Wait for user to release modifiers.
-    if (!waitForModifiersReleased(config))
-        return;
+    if (!waitForModifiersReleased(config)) {
+        logWindowWarning("Failed to simulate key presses while modifiers are pressed", m_window);
+        return false;
+    }
 
     const int keyPressTimeMs = config.option<Config::window_key_press_time_ms>();
     if (keyPressTimeMs <= 0) {
-        sendInputs({
+        return sendInputs({
            createInput(modifier),
            createInput(key),
            createInput(key, KEYEVENTF_KEYUP),
            createInput(modifier, KEYEVENTF_KEYUP)
         }, m_window);
-    } else {
-        const bool sent = sendInputs({
-            createInput(modifier),
-            createInput(key)
-        }, m_window);
-        if (!sent)
-            return;
-
-        waitMs(keyPressTimeMs);
-
-        sendInputs({
-           createInput(key, KEYEVENTF_KEYUP),
-           createInput(modifier, KEYEVENTF_KEYUP)
-        }, m_window);
     }
+
+    const bool sent = sendInputs({
+        createInput(modifier),
+        createInput(key)
+    }, m_window);
+    if (!sent)
+        return false;
+
+    waitMs(keyPressTimeMs);
+
+    return sendInputs({
+       createInput(key, KEYEVENTF_KEYUP),
+       createInput(modifier, KEYEVENTF_KEYUP)
+    }, m_window);
 }

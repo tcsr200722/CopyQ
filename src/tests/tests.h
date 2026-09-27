@@ -1,24 +1,7 @@
-/*
-    Copyright (c) 2020, Lukas Holecek <hluk@email.cz>
+// SPDX-License-Identifier: GPL-3.0-or-later
 
-    This file is part of CopyQ.
+#pragma once
 
-    CopyQ is free software: you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation, either version 3 of the License, or
-    (at your option) any later version.
-
-    CopyQ is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
-
-    You should have received a copy of the GNU General Public License
-    along with CopyQ.  If not, see <http://www.gnu.org/licenses/>.
-*/
-
-#ifndef TESTS_H
-#define TESTS_H
 
 #include "tests/testinterface.h"
 
@@ -29,14 +12,14 @@ class QProcess;
 class QByteArray;
 
 /**
- * Tests for the application.
+ * Core tests for the application.
  */
-class Tests final : public QObject
+class CoreTests final : public QObject
 {
     Q_OBJECT
 
 public:
-    explicit Tests(const TestInterfacePtr &test, QObject *parent = nullptr);
+    explicit CoreTests(const TestInterfacePtr &test, QObject *parent = nullptr);
 
 private slots:
     void initTestCase();
@@ -44,17 +27,22 @@ private slots:
     void init();
     void cleanup();
 
+    void configPath();
     void readLog();
+    void rotateLog();
+    void pluginsDisabled();
     void commandHelp();
     void commandVersion();
     void badCommand();
     void badSessionName();
+    void commandSession();
 
     void commandCatchExceptions();
 
     void commandExit();
     void commandEval();
     void commandEvalThrows();
+    void commandEvalThrowsWithLineNumber();
     void commandEvalSyntaxError();
     void commandEvalArguments();
     void commandEvalEndingWithComment();
@@ -65,8 +53,8 @@ private slots:
 
     void commandVisible();
     void commandToggle();
-    void commandHide();
-    void commandShow();
+    void commandShowHide();
+    void commandShowHideRapid();
     void commandShowAt();
     void commandFocused();
 
@@ -74,6 +62,7 @@ private slots:
 
     void commandsAddRead();
     void commandsWriteRead();
+    void commandsReadUtf8ByDefault();
     void commandChange();
 
     void commandSetCurrentTab();
@@ -82,6 +71,8 @@ private slots:
     void commandToggleConfig();
 
     void commandDialog();
+    void commandDialogFitsContents();
+    void commandDialogRestoreGeometry();
     void commandDialogCloseOnDisconnect();
 
     void commandMenuItems();
@@ -111,6 +102,7 @@ private slots:
     void commandHasClipboardFormat();
 
     void commandEdit();
+    void commandEditItem();
 
     void commandGetSetCurrentPath();
 
@@ -128,6 +120,9 @@ private slots:
     void commandScreenshot();
 
     void commandNotification();
+    void commandNotificationUrgency();
+    void commandNotificationPersistent();
+    void commandPlaySound();
 
     void commandIcon();
     void commandIconTag();
@@ -149,12 +144,19 @@ private slots:
 
     void commandServerLogAndLogs();
 
+    void commandStats();
+    void statsQObjectLeak();
+    void statsItemPreview();
+
     void classByteArray();
     void classFile();
     void classDir();
     void classTemporaryFile();
     void classItemSelection();
     void classItemSelectionGetCurrent();
+    void classItemSelectionByteArray();
+    void classItemSelectionSort();
+    void classSettings();
     void calledWithInstance();
 
     void pipingCommands();
@@ -165,15 +167,25 @@ private slots:
 
     void keysAndFocusing();
 
+    void navigationDefault();
+    void navigationVi();
+    void navigationEmacs();
+
     void selectItems();
 
     void moveItems();
     void deleteItems();
     void searchItems();
     void searchItemsAndSelect();
+    void searchItemsAndCopy();
     void searchRowNumber();
     void searchAccented();
+    void searchManyItems();
     void copyItems();
+    void selectAndCopyOrder();
+    void copyItemsNullCharacter();
+
+    void sortAndReverse();
 
     void createTabDialog();
 
@@ -182,6 +194,7 @@ private slots:
     void editItems();
     void createNewItem();
     void editNotes();
+    void editHtml();
 
     void toggleClipboardMonitoring();
 
@@ -215,6 +228,8 @@ private slots:
 
     void traySearch();
     void trayPaste();
+    void trayShowHideAction();
+    void trayMenuToggleRapid();
 
     void pasteNext();
 
@@ -225,9 +240,11 @@ private slots:
 
     void configAutostart();
 
-    void configPathEnvVariable();
+    void envVariablePaths();
 
     void configTabs();
+
+    void selectedItems();
 
     void shortcutCommand();
     void shortcutCommandOverrideEnter();
@@ -253,19 +270,30 @@ private slots:
     void automaticCommandStoreSpecialFormat();
     void automaticCommandIgnoreSpecialFormat();
 
+    void globalCommandInMenu();
+
     void scriptCommandLoaded();
     void scriptCommandAddFunction();
     void scriptCommandOverrideFunction();
     void scriptCommandEnhanceFunction();
     void scriptCommandEndingWithComment();
     void scriptCommandWithError();
+
+    void scriptPaste();
+    void scriptOnTabSelected();
+    void scriptOnItemsRemoved();
+    void scriptOnItemsAdded();
+    void scriptOnItemsChanged();
+    void scriptOnItemsLoaded();
+    void scriptEventMaxRecursion();
+    void scriptSlowCollectOverrides();
+
     void displayCommand();
+    void displayCommandForMenu();
 
     void synchronizeInternalCommands();
 
-    void queryKeyboardModifiersCommand();
-    void pointerPositionCommand();
-    void setPointerPositionCommand();
+    void utilityCommands();
 
     void setTabName();
 
@@ -283,24 +311,83 @@ private slots:
 
     void actionDialogCancel();
     void actionDialogAccept();
-    void actionDialogSelection();
     void actionDialogSelectionInputOutput();
 
     void exitConfirm();
     void exitNoConfirm();
+    void exitStopCommands();
+    void terminateActionRequestTerminate();
+    void terminateActionRequestKill();
 
     void abortInputReader();
 
     void changeAlwaysOnTop();
 
-    void networkGet();
-    void networkGetPostAsync();
+    void networkTests();
 
     void pluginNotInstalled();
 
     void startServerAndRunCommand();
 
+    void avoidStoringPasswords();
+    void scriptsForPasswords();
+
+    void currentClipboardOwner();
+    void singleClipboardProvider();
+
+    void saveLargeItem();
+
+    void slowClipboard();
+    void clipboardUriList();
+    void clipboardMimeSizeLimit();
+    void clipboardMimeSizeLimitConfig();
+
+    void handleUnexpectedTypes();
+
+    void expireTabs();
+    void expireEncryptionPassword();
+    void expireEncryptionPasswordOnConfigChange();
+
+    void dragNDropItemOrder();
+    void dragNDropItemToTabTree();
+    void dragNDropTreeTab();
+    void dragNDropTreeTabNested();
+    void dragNDropTreeTabChildCollision();
+    void dragNDropTreeTabPartialRenameFailure();
+    void dragNDropTreeTabKeepsCollapsedState();
+
+    void tabEncryption();
+    void tabEncryptionPasswordNew();
+    void tabEncryptionPasswordCurrent();
+    void tabEncryptionPasswordRetry();
+    void tabEncryptionPasswordRetryFail();
+    void tabEncryptionPasswordAbortRetry();
+    void tabEncryptionLargeItems();
+    void tabEncryptionChangePassword();
+
+    void exportImportNoPasswordTab();
+    void exportImportNoPasswordSettingsOnly();
+    void exportImportNoPasswordCommandsOnly();
+    void exportImportPasswordTab();
+    void exportImportPasswordSettingsOnly();
+    void exportImportPasswordCommandsOnly();
+    void exportImportErrors();
+
 private:
+    void navigationTestInit();
+    void navigationTestDownUp(const QString &down, const QString &up);
+    void navigationTestEndHome(const QString &end, const QString &home);
+    void navigationTestEscapeEditor(const QString &esc, const QString &editor);
+    void navigationTestEscapeSearch(const QString &esc, const QString &search);
+
+    enum ExportFlags {
+        ExportWithPassword = 1,
+        ExportTab = 2,
+        ExportSettings = 4,
+        ExportCommands = 8
+    };
+    void exportImport(int flags);
+
     void clearServerErrors();
     int run(const QStringList &arguments, QByteArray *stdoutData = nullptr,
             QByteArray *stderrData = nullptr, const QByteArray &in = QByteArray(),
@@ -309,7 +396,3 @@ private:
 
     TestInterfacePtr m_test;
 };
-
-int runTests(int argc, char *argv[]);
-
-#endif // TESTS_H

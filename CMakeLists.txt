@@ -1,19 +1,18 @@
+cmake_minimum_required(VERSION 3.16)
 project(copyq)
 
 if (APPLE)
-    cmake_minimum_required(VERSION 3.1)
     set(COPYQ_EXECUTABLE_NAME "CopyQ")
 else()
-    cmake_minimum_required(VERSION 2.8.12)
-    set(COPYQ_EXECUTABLE_NAME ${PROJECT_NAME})
+    set(COPYQ_EXECUTABLE_NAME copyq)
 endif()
 
 # C++17
-if (${CMAKE_MAJOR_VERSION}.${CMAKE_MINOR_VERSION} GREATER 3.1)
-    set(CMAKE_CXX_STANDARD 17)
-else()
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++17")
-endif()
+set(CMAKE_CXX_STANDARD 17)
+
+set(CMAKE_CXX_VISIBILITY_PRESET hidden)
+set(CMAKE_C_VISIBILITY_PRESET hidden)
+set(CMAKE_VISIBILITY_INLINES_HIDDEN ON)
 
 if(CMAKE_BUILD_TYPE MATCHES Debug)
     set(COPYQ_DEBUG ON)
@@ -23,8 +22,19 @@ endif()
 OPTION(PEDANTIC "Enable all compiler warnings" OFF)
 
 # Options (cmake -LH)
-OPTION(WITH_TESTS "Run test cases from command line" ${COPYQ_DEBUG})
 OPTION(WITH_PLUGINS "Compile plugins" ON)
+OPTION(WITH_QCA_ENCRYPTION "Enable QCA-based tab encryption" ON)
+OPTION(WITH_KEYCHAIN "Enable system keyring integration using QtKeychain" ON)
+OPTION(WITH_GNOME_CLIPBOARD_EXTENSION "Install GNOME extension, required for clipboard monitoring" ON)
+OPTION(WITH_AUDIO "Build with audio playback support (miniaudio)" ON)
+OPTION(WITH_APPIMAGE "Enable AppImage runtime support (uses $APPIMAGE/$APPDIR env vars)" OFF)
+
+add_definitions( -DQT_USE_STRINGBUILDER  )
+
+if (WIN32)
+    # Prevent windows.h from defining min/max macros that conflict with std::min/std::max.
+    add_definitions( -DNOMINMAX )
+endif()
 
 # Unix-specific options
 if (UNIX AND NOT APPLE)
@@ -41,52 +51,54 @@ if (UNIX AND NOT APPLE)
     set(BASH_COMPLETION_INSTALL_PREFIX "${DATA_INSTALL_PREFIX}/bash-completion/completions/" CACHE PATH "Install path for bash completions")
     set(ICON_NAME "copyq" CACHE STRING "Name for icon files")
     set(COPYQ_AUTOSTART_COMMAND "" CACHE STRING "Autostart command")
+    OPTION(COPYQ_AUTOSTART "Enable autostart option" ON)
 endif()
 
 set(CMAKE_AUTOMOC ON)
 
-OPTION(WITH_QT6 "Enable Qt 6" OFF)
-if (WITH_QT6)
-    set(QT_DEFAULT_MAJOR_VERSION 6)
-    find_package(Qt6Widgets 6.1.0 REQUIRED)
-    set(copyq_qt Qt6)
-    add_definitions( -DQT_DEPRECATED_WARNINGS_SINCE=0x051500 )
-else()
-    set(QT_DEFAULT_MAJOR_VERSION 5)
-    find_package(Qt5Widgets 5.8.0 REQUIRED)
-    set(copyq_qt Qt5)
-    if (Qt5Widgets_VERSION VERSION_LESS 5.15.0)
-        function(qt_wrap_ui outfiles)
-            qt5_wrap_ui("${outfiles}" ${ARGN})
-            set("${outfiles}" "${${outfiles}}" PARENT_SCOPE)
-        endfunction()
-        function(qt_add_resources outfiles)
-            qt5_add_resources("${outfiles}" ${ARGN})
-            set("${outfiles}" "${${outfiles}}" PARENT_SCOPE)
-        endfunction()
-        function(qt_add_translation _qm_files)
-            qt5_add_translation("${_qm_files}" ${ARGN})
-            set("${_qm_files}" "${${_qm_files}}" PARENT_SCOPE)
-        endfunction()
-    endif()
-endif()
+set(QT_DEFAULT_MAJOR_VERSION 6)
+find_package(Qt6Widgets 6.2.0 REQUIRED)
+set(copyq_qt Qt6)
+add_definitions( -DQT_DEPRECATED_WARNINGS_SINCE=0x060200 )
 
 list(APPEND copyq_LIBRARIES ${copyq_qt}::Widgets)
+
+# QCA encryption support
+if (WITH_QCA_ENCRYPTION)
+    find_package(Qca-qt${QT_DEFAULT_MAJOR_VERSION} REQUIRED)
+    list(APPEND copyq_LIBRARIES qca-qt${QT_DEFAULT_MAJOR_VERSION})
+    add_definitions(-DWITH_QCA_ENCRYPTION)
+    message(STATUS "QCA encryption support enabled")
+else()
+    message(STATUS "QCA encryption support DISABLED")
+    set(WITH_KEYCHAIN OFF)
+endif()
+
+# QtKeychain support for system keyring integration
+if (WITH_KEYCHAIN)
+    find_package(Qt${QT_DEFAULT_MAJOR_VERSION}Keychain REQUIRED)
+    list(APPEND copyq_LIBRARIES qt${QT_DEFAULT_MAJOR_VERSION}keychain)
+    add_definitions(-DWITH_KEYCHAIN)
+    add_definitions(-DQTKEYCHAIN_VERSION_STRING="${Qt${QT_DEFAULT_MAJOR_VERSION}Keychain_VERSION}")
+    message(STATUS "Keychain support enabled")
+else()
+    message(STATUS "Keychain support disabled")
+endif()
 
 set(copyq_APP_ID          com.github.hluk.copyq)
 set(copyq_ICON_PREFIX     src/images/icon)
 set(copyq_ICON_NORMAL     src/images/icon.svg)
 set(copyq_ICON_MASK       src/images/icon_mask.svg)
 set(copyq_DESKTOP         shared/${copyq_APP_ID}.desktop)
-set(copyq_APPDATA         shared/${copyq_APP_ID}.appdata.xml)
+set(copyq_APPDATA         shared/${copyq_APP_ID}.metainfo.xml)
 set(copyq_BASH_COMPLETION shared/copyq-completion)
-set(copyq_MANPAGE         debian/copyq.1)
+set(copyq_MANPAGE         shared/copyq.1)
 
 # Be more strict while compiling debugging version
 if(CMAKE_COMPILER_IS_GNUCXX OR "${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang")
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-long-long")
     set(CMAKE_CXX_FLAGS_DEBUG
-        "${CMAKE_CXX_FLAGS_DEBUG} -Wextra -Wall -pedantic -Wfloat-equal -Woverloaded-virtual -Wundef -Wno-inconsistent-missing-destructor-override")
+        "${CMAKE_CXX_FLAGS_DEBUG} -Wextra -Wall -pedantic -Wfloat-equal -Woverloaded-virtual -Wundef -Wno-inconsistent-missing-destructor-override -Wno-variadic-macro-arguments-omitted")
 endif()
 
 if (PEDANTIC)
@@ -102,15 +114,13 @@ if (PEDANTIC)
         list(APPEND copyq_pedantic_flags
             -Weverything
             -Winconsistent-missing-override
-            )
-
-        list(APPEND copyq_pedantic_flags
             -Wno-c++98-compat
             -Wno-c++98-compat-pedantic
             -Wno-disabled-macro-expansion
             -Wno-double-promotion
             -Wno-exit-time-destructors
             -Wno-extra-semi-stmt
+            -Wno-inconsistent-missing-destructor-override
             -Wno-redundant-parens
             -Wno-shadow-field
             -Wno-shadow-field-in-constructor
@@ -120,6 +130,7 @@ if (PEDANTIC)
             -Wno-unknown-warning-option
             -Wno-used-but-marked-unused
             -Wno-weak-vtables
+            -Wno-switch-default
             -fcomment-block-commands=retval
             )
     endif()
@@ -144,20 +155,6 @@ if (PEDANTIC)
         -Wno-padded
         -Wno-switch-enum
         )
-
-    # Disable Q_OBJECT macro warnings.
-    list(APPEND copyq_pedantic_flags
-        -Wno-unused-member-function
-        )
-endif()
-
-if(WITH_TESTS)
-    message(STATUS "Building with tests.")
-
-    add_definitions( -DHAS_TESTS )
-
-    find_package(${copyq_qt}Test REQUIRED)
-    list(APPEND copyq_LIBRARIES ${copyq_qt}::Test)
 endif()
 
 include(src/version.cmake)
@@ -169,6 +166,14 @@ if (UNIX AND NOT APPLE)
     install(FILES ${copyq_APPDATA}         DESTINATION ${APPDATA_INSTALL_PREFIX})
     install(FILES ${copyq_MANPAGE}         DESTINATION ${MANPAGE_INSTALL_PREFIX})
     install(FILES ${copyq_BASH_COMPLETION} DESTINATION ${BASH_COMPLETION_INSTALL_PREFIX} RENAME copyq)
+
+    if (WITH_GNOME_CLIPBOARD_EXTENSION)
+        set(copyq_GNOME_EXTENSION_DESTINATION "${DATA_INSTALL_PREFIX}/gnome-shell/extensions/copyq-clipboard@hluk.github.com")
+        install(FILES
+            shared/gnome-extension/extension.js
+            shared/gnome-extension/metadata.json
+            DESTINATION "${copyq_GNOME_EXTENSION_DESTINATION}")
+    endif()
 
     configure_file(${copyq_DESKTOP}.in ${copyq_DESKTOP})
     install(FILES ${CMAKE_CURRENT_BINARY_DIR}/${copyq_DESKTOP} DESTINATION ${DESKTOP_INSTALL_PREFIX})
@@ -192,6 +197,10 @@ if (UNIX AND NOT APPLE)
     add_definitions( -DCOPYQ_TRANSLATION_PREFIX="${TRANSLATION_INSTALL_PREFIX}" )
     add_definitions( -DCOPYQ_BASH_COMPLETION_PREFIX="${BASH_COMPLETION_INSTALL_PREFIX}" )
     add_definitions( -DCOPYQ_ICON_NAME="${ICON_NAME}" )
+
+    if (COPYQ_AUTOSTART)
+        add_definitions( -DCOPYQ_AUTOSTART )
+    endif()
 
     if (COPYQ_AUTOSTART_COMMAND)
         add_definitions( -DCOPYQ_AUTOSTART_COMMAND="${COPYQ_AUTOSTART_COMMAND}" )

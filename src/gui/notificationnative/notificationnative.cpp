@@ -1,21 +1,4 @@
-/*
-    Copyright (c) 2020, Lukas Holecek <hluk@email.cz>
-
-    This file is part of CopyQ.
-
-    CopyQ is free software: you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation, either version 3 of the License, or
-    (at your option) any later version.
-
-    CopyQ is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
-
-    You should have received a copy of the GNU General Public License
-    along with CopyQ.  If not, see <http://www.gnu.org/licenses/>.
-*/
+// SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "notificationnative.h"
 
@@ -39,7 +22,6 @@
 #include <QPainter>
 #include <QPointer>
 #include <QPushButton>
-#include <QStandardPaths>
 #include <QTextEdit>
 
 #include <knotifications_version.h>
@@ -49,6 +31,17 @@
 namespace {
 
 constexpr auto componentName = "copyq";
+constexpr auto maxTitleLength = 10000;
+constexpr auto maxBodyLength = 100000;
+constexpr auto maxLines = 100;
+
+QString limitLength(const QString &text, int maxLength)
+{
+    QString result = text.left(maxLength).split('\n').mid(0, maxLines).join('\n');
+    if (result.length() < text.length())
+        result.append("\n…");
+    return result;
+}
 
 QPixmap defaultIcon()
 {
@@ -71,9 +64,11 @@ public:
     void setIcon(const QString &icon) override;
     void setIcon(ushort icon) override;
     void setInterval(int msec) override;
-    void setOpacity(qreal) override {}
+    void setOpacity(qreal) override { /* Native notification: opacity managed by the OS */ }
     void setButtons(const NotificationButtons &buttons) override;
-    void adjust() override {}
+    void setUrgency(Urgency urgency) override;
+    void setPersistency(Persistency persistency) override;
+    void adjust() override { /* Native notification: layout managed by the OS */ }
     QWidget *widget() override { return nullptr; }
     void show() override;
     void close() override;
@@ -83,7 +78,9 @@ private:
     void onDestroyed();
     void onClosed();
     void onIgnored();
+#if KNOTIFICATIONS_VERSION < QT_VERSION_CHECK(5,245,0)
     void onActivated();
+#endif
     void update();
 
     void notificationLog(const char *message);
@@ -102,6 +99,8 @@ private:
     ushort m_iconId;
     QPixmap m_pixmap;
     bool m_closed = false;
+    Urgency m_urgency = Urgency::Default;
+    Persistency m_persistency = Persistency::Default;
 };
 
 } // namespace
@@ -124,15 +123,16 @@ NotificationNative::~NotificationNative()
 
 void NotificationNative::setTitle(const QString &title)
 {
-    m_title = title;
+    m_title = limitLength(title, maxTitleLength);
 }
 
 void NotificationNative::setMessage(const QString &msg, Qt::TextFormat format)
 {
-    if (format == Qt::PlainText)
-        m_message = msg.toHtmlEscaped();
-    else
-        m_message = msg;
+    m_message = limitLength(msg, maxBodyLength);
+
+    if (format == Qt::PlainText) {
+        m_message = m_message.toHtmlEscaped();
+    }
 }
 
 void NotificationNative::setPixmap(const QPixmap &pixmap)
@@ -169,6 +169,16 @@ void NotificationNative::setButtons(const NotificationButtons &buttons)
     m_buttons = buttons;
 }
 
+void NotificationNative::setUrgency(Urgency urgency)
+{
+    m_urgency = urgency;
+}
+
+void NotificationNative::setPersistency(Persistency persistency)
+{
+    m_persistency = persistency;
+}
+
 void NotificationNative::show()
 {
     if (m_closed)
@@ -178,29 +188,33 @@ void NotificationNative::show()
 
     if (m_notification) {
         update();
+#if KNOTIFICATIONS_VERSION < QT_VERSION_CHECK(5,110,0)
         if (m_notification)
             m_notification->update();
+#endif
         notificationLog("Updated");
         return;
     }
 
-    m_notification = new KNotification("generic");
+    m_notification = new KNotification(QStringLiteral("generic"));
     notificationLog("Create");
     m_notification->setComponentName(componentName);
 
+#if KNOTIFICATIONS_VERSION < QT_VERSION_CHECK(5,245,0)
     connect( m_notification.data(), static_cast<void (KNotification::*)(unsigned int)>(&KNotification::activated),
              this, &NotificationNative::onButtonClicked );
+#   if KNOTIFICATIONS_VERSION < QT_VERSION_CHECK(5,67,0)
+    connect( m_notification.data(), static_cast<void (KNotification::*)()>(&KNotification::activated),
+             this, &NotificationNative::onActivated );
+#   else
+    connect( m_notification.data(), &KNotification::defaultActivated,
+             this, &NotificationNative::onActivated );
+#   endif
+#endif
     connect( m_notification.data(), &KNotification::closed,
              this, &NotificationNative::onClosed );
     connect( m_notification.data(), &KNotification::ignored,
              this, &NotificationNative::onIgnored );
-#if KNOTIFICATIONS_VERSION < QT_VERSION_CHECK(5,67,0)
-    connect( m_notification.data(), static_cast<void (KNotification::*)()>(&KNotification::activated),
-             this, &NotificationNative::onActivated );
-#else
-    connect( m_notification.data(), &KNotification::defaultActivated,
-             this, &NotificationNative::onActivated );
-#endif
     connect( m_notification.data(), &QObject::destroyed,
              this, &NotificationNative::onDestroyed );
 
@@ -220,13 +234,11 @@ void NotificationNative::close()
         notification->close();
 
     notificationLog("Closed");
-
-    emit closeNotification(this);
 }
 
 void NotificationNative::onButtonClicked(unsigned int id)
 {
-    notificationLog("onButtonClicked");
+    notificationLog(QByteArray("onButtonClicked ") + QByteArray::number(id));
 
     if ( id - 1 < static_cast<unsigned int>(m_buttons.size()) ) {
         emit buttonClicked(m_buttons[id - 1]);
@@ -252,11 +264,13 @@ void NotificationNative::onIgnored()
     dropNotification();
 }
 
+#if KNOTIFICATIONS_VERSION < QT_VERSION_CHECK(5,245,0)
 void NotificationNative::onActivated()
 {
     notificationLog("onActivated");
     dropNotification();
 }
+#endif
 
 void NotificationNative::update()
 {
@@ -294,26 +308,48 @@ void NotificationNative::update()
         m_notification->setPixmap(defaultIcon());
     }
 
+#if KNOTIFICATIONS_VERSION >= QT_VERSION_CHECK(5,245,0)
+    m_notification->clearActions();
+    for (int i = 0; i < m_buttons.size(); ++i) {
+        KNotificationAction* act = m_notification->addAction(m_buttons[i].name);
+        connect( act, &KNotificationAction::activated,
+                 this, [=](){ onButtonClicked(i + 1); } );
+    }
+#else
     QStringList actions;
     for (const auto &button : m_buttons)
         actions.append(button.name);
     m_notification->setActions(actions);
+#endif
+
+#if KNOTIFICATIONS_VERSION >= QT_VERSION_CHECK(5,58,0)
+    m_notification->setUrgency(static_cast<KNotification::Urgency>(m_urgency));
+#endif
+
+    if (m_persistency == Persistency::Persistent)
+        m_notification->setFlags(KNotification::Persistent);
+    else
+        m_notification->setFlags({});
 
     if (m_intervalMsec < 0) {
         m_timer.stop();
-        m_notification->setFlags(KNotification::Persistent);
+        if (m_persistency == Persistency::Default)
+            m_notification->setFlags(KNotification::Persistent);
 #if KNOTIFICATIONS_VERSION >= QT_VERSION_CHECK(5,58,0)
-        m_notification->setUrgency(KNotification::HighUrgency);
+        if (m_urgency == Urgency::Default)
+            m_notification->setUrgency(KNotification::HighUrgency);
 #endif
     } else {
         // Specific timeout is not supported by KNotifications.
         m_timer.start(m_intervalMsec);
         m_notification->setFlags(KNotification::CloseOnTimeout);
 #if KNOTIFICATIONS_VERSION >= QT_VERSION_CHECK(5,58,0)
-        const KNotification::Urgency urgency = m_intervalMsec <= 10000
-            ? KNotification::LowUrgency
-            : KNotification::NormalUrgency;
-        m_notification->setUrgency(urgency);
+        if (m_urgency == Urgency::Default) {
+            const KNotification::Urgency urgency = m_intervalMsec <= 10000
+                ? KNotification::LowUrgency
+                : KNotification::NormalUrgency;
+            m_notification->setUrgency(urgency);
+        }
 #endif
     }
 }
@@ -330,12 +366,12 @@ void NotificationNative::notificationLog(const char *message)
 KNotification *NotificationNative::dropNotification()
 {
     m_closed = true;
-    if (!m_notification)
-        return nullptr;
-
     auto notification = m_notification;
-    m_notification = nullptr;
-    notification->disconnect(this);
+    if (notification) {
+        m_notification = nullptr;
+        notification->disconnect(this);
+    }
+    emit closeNotification(this);
     return notification;
 }
 

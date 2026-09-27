@@ -46,7 +46,8 @@ CMakeLists.txt.user*
 .qmake.stash
 *.pyc
 *.dmg
-/build
+/build*
+/_install*
 *.qm
 
 # Generated Sphinx files
@@ -58,3 +59,9 @@ CMakeLists.txt.user*
 
 # Visual Studio Code
 /.vscode
+
+# Files for utils/launchpad/build.sh
+.gitconfig
+launchpad.key
+compile_commands.json
+uv.lock

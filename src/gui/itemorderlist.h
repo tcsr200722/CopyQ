@@ -1,31 +1,14 @@
-/*
-    Copyright (c) 2020, Lukas Holecek <hluk@email.cz>
+// SPDX-License-Identifier: GPL-3.0-or-later
 
-    This file is part of CopyQ.
+#pragma once
 
-    CopyQ is free software: you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation, either version 3 of the License, or
-    (at your option) any later version.
 
-    CopyQ is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
-
-    You should have received a copy of the GNU General Public License
-    along with CopyQ.  If not, see <http://www.gnu.org/licenses/>.
-*/
-
-#ifndef ITEMORDERLIST_H
-#define ITEMORDERLIST_H
-
-#include <QMap>
 #include <QListWidgetItem>
 #include <QPointer>
 #include <QWidget>
 
 #include <memory>
+#include <unordered_map>
 
 namespace Ui {
 class ItemOrderList;
@@ -138,7 +121,6 @@ private:
     void moveTab(int row, int targetRow);
 
     struct ItemWidgetPair {
-        ItemWidgetPair() {}
         explicit ItemWidgetPair(const ItemPtr &item, bool checked)
             : item(item)
             , lastCheckedState(checked)
@@ -155,9 +137,8 @@ private:
     void removeItem(QListWidgetItem *item);
 
     Ui::ItemOrderList *ui;
-    QMap<QListWidgetItem*, ItemWidgetPair> m_items;
+    std::unordered_map<int, ItemWidgetPair> m_items;
+    int m_lastItemId = 0;
 
     QRegularExpression m_dragAndDropRe;
 };
-
-#endif // ITEMORDERLIST_H

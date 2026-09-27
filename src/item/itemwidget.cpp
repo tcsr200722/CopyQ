@@ -1,36 +1,17 @@
-/*
-    Copyright (c) 2020, Lukas Holecek <hluk@email.cz>
-
-    This file is part of CopyQ.
-
-    CopyQ is free software: you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation, either version 3 of the License, or
-    (at your option) any later version.
-
-    CopyQ is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
-
-    You should have received a copy of the GNU General Public License
-    along with CopyQ.  If not, see <http://www.gnu.org/licenses/>.
-*/
+// SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "itemwidget.h"
 
 #include "common/command.h"
-#include "common/contenttype.h"
-#include "common/mimetypes.h"
 #include "item/itemeditor.h"
 
 #include <QAbstractItemModel>
-#include <QApplication>
 #include <QDesktopServices>
 #include <QEvent>
 #include <QMimeData>
 #include <QModelIndex>
 #include <QMouseEvent>
+#include <QPersistentModelIndex>
 #include <QTextEdit>
 #include <QUrl>
 #include <QWidget>
@@ -96,7 +77,7 @@ bool ItemWidget::filterMouseEvents(QTextEdit *edit, QEvent *event)
 
     case QEvent::MouseButtonPress:
     case QEvent::MouseButtonDblClick: {
-        QMouseEvent *e = static_cast<QMouseEvent*>(event);
+        auto *e = static_cast<QMouseEvent*>(event);
 
         if ( !canMouseInteract(*e) )
             allowMouseInteraction = false;
@@ -107,7 +88,7 @@ bool ItemWidget::filterMouseEvents(QTextEdit *edit, QEvent *event)
     }
 
     case QEvent::MouseMove: {
-        QMouseEvent *e = static_cast<QMouseEvent*>(event);
+        auto *e = static_cast<QMouseEvent*>(event);
 
         if ( !canMouseInteract(*e) )
             allowMouseInteraction = false;
@@ -116,7 +97,7 @@ bool ItemWidget::filterMouseEvents(QTextEdit *edit, QEvent *event)
     }
 
     case QEvent::MouseButtonRelease: {
-        QMouseEvent *e = static_cast<QMouseEvent*>(event);
+        auto *e = static_cast<QMouseEvent*>(event);
 
         if ( canMouseInteract(*e) && edit->textCursor().hasSelection() )
             edit->copy();
@@ -175,7 +156,7 @@ QVariant ItemScriptable::call(const QString &method, const QVariantList &argumen
 
 QVariant ItemScriptable::eval(const QString &script)
 {
-    return call("eval", QVariantList() << script);
+    return call("eval", {script});
 }
 
 QVariantList ItemScriptable::currentArguments()
@@ -214,8 +195,9 @@ bool ItemSaverInterface::canMoveItems(const QList<QModelIndex> &)
     return true;
 }
 
-void ItemSaverInterface::itemsRemovedByUser(const QList<QModelIndex> &)
+void ItemSaverInterface::itemsRemovedByUser(const QList<QPersistentModelIndex> &)
 {
+    /* No-op default: subclasses override to handle user-initiated removal */
 }
 
 QVariantMap ItemSaverInterface::copyItem(const QAbstractItemModel &, const QVariantMap &itemData)
@@ -225,11 +207,17 @@ QVariantMap ItemSaverInterface::copyItem(const QAbstractItemModel &, const QVari
 
 void ItemSaverInterface::setFocus(bool)
 {
+    /* No-op default: subclasses override to handle focus changes */
 }
 
 ItemWidget *ItemLoaderInterface::create(const QVariantMap &, QWidget *, bool) const
 {
     return nullptr;
+}
+
+QStringList ItemLoaderInterface::formatsToSave() const
+{
+    return {};
 }
 
 bool ItemLoaderInterface::canLoadItems(QIODevice *) const
@@ -267,11 +255,6 @@ bool ItemLoaderInterface::matches(const QModelIndex &, const ItemFilter &) const
     return false;
 }
 
-QObject *ItemLoaderInterface::tests(const TestInterfacePtr &) const
-{
-    return nullptr;
-}
-
 const QObject *ItemLoaderInterface::signaler() const
 {
     return nullptr;
@@ -280,6 +263,11 @@ const QObject *ItemLoaderInterface::signaler() const
 ItemScriptable *ItemLoaderInterface::scriptableObject()
 {
     return nullptr;
+}
+
+QVariant ItemLoaderInterface::scriptCallback(const QVariantList &)
+{
+    return {};
 }
 
 QVector<Command> ItemLoaderInterface::commands() const
@@ -301,4 +289,3 @@ QObject *ItemLoaderInterface::createExternalEditor(const QModelIndex &, const QV
 {
     return nullptr;
 }
-

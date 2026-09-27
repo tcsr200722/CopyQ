@@ -1,21 +1,4 @@
-/*
-    Copyright (c) 2020, Lukas Holecek <hluk@email.cz>
-
-    This file is part of CopyQ.
-
-    CopyQ is free software: you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation, either version 3 of the License, or
-    (at your option) any later version.
-
-    CopyQ is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
-
-    You should have received a copy of the GNU General Public License
-    along with CopyQ.  If not, see <http://www.gnu.org/licenses/>.
-*/
+// SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "gui/commanddialog.h"
 #include "ui_commanddialog.h"
@@ -30,6 +13,7 @@
 #include "gui/commandwidget.h"
 #include "gui/iconfactory.h"
 #include "gui/icons.h"
+#include "gui/fromiconid.h"
 #include "platform/platformclipboard.h"
 #include "platform/platformnativeinterface.h"
 
@@ -43,7 +27,7 @@
 namespace {
 
 const QIcon iconLoadCommands() { return getIcon("document-open", IconFolderOpen); }
-const QIcon iconSaveCommands() { return getIcon("document-save", IconSave); }
+const QIcon iconSaveCommands() { return getIcon("document-save", IconFloppyDisk); }
 const QIcon iconCopyCommands() { return getIcon("edit-copy", IconCopy); }
 const QIcon iconPasteCommands() { return getIcon("edit-paste", IconPaste); }
 
@@ -52,10 +36,10 @@ QIcon getCommandIcon(const QString &iconString, int commandType)
     const auto icon =
             commandType & CommandType::Automatic ? IconClipboard
           : commandType & CommandType::GlobalShortcut ? IconKeyboard
-          : commandType & CommandType::Script ? IconCog
+          : commandType & CommandType::Script ? IconGear
           : commandType & CommandType::Display ? IconEye
           : commandType & CommandType::Menu ? IconBars
-          : IconExclamationTriangle;
+          : IconTriangleExclamation;
     const auto color =
             commandType & CommandType::Disabled ? QColor(Qt::lightGray)
           : commandType & CommandType::Automatic ? QColor(240,220,200)
@@ -65,7 +49,7 @@ QIcon getCommandIcon(const QString &iconString, int commandType)
           : commandType & CommandType::Menu ? QColor(100,220,255)
           : QColor(255,100,100);
 
-    return iconFromFile(iconString, QString(QChar(icon)), color);
+    return iconFromFile(iconString, fromIconId(icon), color);
 }
 
 bool hasCommandsToPaste(const QString &text)
@@ -288,7 +272,13 @@ void CommandDialog::onPushButtonSaveCommandsClicked()
             fileName.append(".ini");
 
         QFile ini(fileName);
-        ini.open(QIODevice::WriteOnly);
+        if ( !ini.open(QIODevice::WriteOnly) ) {
+            QMessageBox::warning(
+                    this, tr("Save Commands"),
+                    tr("Failed to save commands to file \"%1\": %2")
+                    .arg(fileName, ini.errorString()) );
+            return;
+        }
         ini.write(serializeSelectedCommands().toUtf8());
     }
 }
@@ -345,7 +335,7 @@ void CommandDialog::onAddCommands(const QVector<Command> &commands)
 void CommandDialog::onCommandTextChanged(const QString &command)
 {
     // Paste commands (starting with [Command] or [Commands]) correctly
-    // even if mistakingly pasted into text edit widget.
+    // even if mistakenly pasted into text edit widget.
     if ( hasCommandsToPaste(command) ) {
         const int row = ui->itemOrderListCommands->currentRow();
         ui->itemOrderListCommands->removeRow(row);
@@ -359,7 +349,7 @@ Command CommandDialog::currentCommand(int row) const
 
     QWidget *w = ui->itemOrderListCommands->widget(row);
     if (w) {
-        const CommandWidget *commandWidget = qobject_cast<const CommandWidget *>(w);
+        const auto *commandWidget = qobject_cast<const CommandWidget *>(w);
         Q_ASSERT(commandWidget);
         c = commandWidget->command();
     } else {
@@ -418,7 +408,7 @@ Commands CommandDialog::selectedCommands() const
     return commandsToSave;
 }
 
-QString CommandDialog::serializeSelectedCommands()
+QString CommandDialog::serializeSelectedCommands() const
 {
     const Commands commands = selectedCommands();
     if ( commands.isEmpty() )
@@ -439,7 +429,7 @@ void CommandDialog::updateIcon(int row)
     ui->itemOrderListCommands->setItemIcon(row, icon);
 }
 
-QString CommandDialog::commandsToPaste()
+QString CommandDialog::commandsToPaste() const
 {
     auto clipboard = platformNativeInterface()->clipboard();
     const QMimeData *data = clipboard->mimeData(ClipboardMode::Clipboard);

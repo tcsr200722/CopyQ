@@ -97,6 +97,8 @@ then choose what to import back.
 
    Importing tabs and commands won't override existing tabs, and will create new ones.
 
+See also: :ref:`backup`
+
 .. _faq-disable-notifications:
 
 How to enable or disable displaying notification when clipboard changes?
@@ -154,9 +156,10 @@ Add and modify automatic command to ignore text copied from the window:
    Button.
 4. Select "Show Advanced"
 5. Change "Window" text box to match the title (or part of it) of the
-   Window to ignore (e.g. ``KeePass``). But for **KeePassXC** (and possible
+   Window to ignore (e.g. ``KeePass``). But for **KeePassXC** (and possibly
    other apps), it is better to set "Format" to ``x-kde-passwordManagerHint``
-   instead.
+   instead (also remember to remove the default that is set in the "Window"
+   setting, since both "Window" and "Format" need to match if they're set).
 6. Click "OK" button to save the changes.
 
 .. note::
@@ -193,7 +196,7 @@ to a separate file**. On Linux and macOS:
 
     copyq exit
     export COPYQ_LOG_LEVEL='DEBUG'
-    export COPYQ_LOG_FILE="$HOME\copyq.log"
+    export COPYQ_LOG_FILE="$HOME/copyq.log"
     echo "Logs will be written to $COPYQ_LOG_FILE"
     copyq
 
@@ -201,11 +204,45 @@ On Windows (in PowerShell):
 
 .. code-block:: powershell
 
-    & 'C:\Program Files (X86)\CopyQ\copyq.exe' exit
+    & 'C:\Program Files\CopyQ\copyq.exe' exit
     $env:COPYQ_LOG_LEVEL = 'DEBUG'
     $env:COPYQ_LOG_FILE = [Environment]::GetFolderPath("MyDocuments") + '\copyq.log'
     echo "Logs will be written to $env:COPYQ_LOG_FILE"
-    & 'C:\Program Files (X86)\CopyQ\copyq.exe'
+    & 'C:\Program Files\CopyQ\copyq.exe'
+
+.. _faq-clipboard-size-limits:
+
+How to limit clipboard data size?
+---------------------------------
+
+Set the ``COPYQ_CLIPBOARD_MIME_SIZE_LIMIT`` environment variable to control the
+maximum size of clipboard data that CopyQ will store. The value is a
+semicolon-delimited list of ``pattern:bytes`` entries, where each pattern is a
+regular expression matched against the MIME type. The byte value supports
+``K``, ``M``, and ``G`` suffixes (case-insensitive, binary units: 1K = 1024).
+The first matching rule wins.
+
+For example::
+
+    COPYQ_CLIPBOARD_MIME_SIZE_LIMIT="text/html.*:0;.*:100M"
+
+This skips HTML data entirely and limits everything else to 100 MiB.
+
+To skip storing images from the clipboard::
+
+    COPYQ_CLIPBOARD_MIME_SIZE_LIMIT="image/.*:0;.*:100M"
+
+The built-in default limits all MIME types to 100 MiB. Custom rules replace
+the default only when at least one valid rule is parsed; otherwise the default
+applies. Set ``.*:-1`` to disable all limits. An empty size (e.g. ``text/plain:``)
+also means no limit.
+
+The same format can also be set from the CopyQ scripting API::
+
+    copyq config clipboard_mime_size_limit "text/html.*:0;.*:100M"
+
+The environment variable takes precedence over the ``config`` option. If both
+are set, the environment variable value is used.
 
 How to preserve the order of copied items when copying or pasting multiple items?
 ---------------------------------------------------------------------------------
@@ -254,11 +291,11 @@ If pasting still doesn't work, it could be caused by either of these problems:
 - CopyQ fails to focus the target window correctly.
 - The format copied to the clipboard is not supported by the target application.
 
-How to open the menu or context menu with only the keyboard?
-------------------------------------------------------------
+How to open the context menu for selected items with only the keyboard?
+-----------------------------------------------------------------------
 
-Use ``Alt+I`` to open the item menu or use the ``Menu`` key on your keyboard
-to open the context menu for selected items.
+In the main CopyQ window, press the ``Menu`` key (or ``Shift+F10``) to open
+the context menu for selected items.
 
 .. _faq-hide-menu-bar:
 
@@ -378,15 +415,20 @@ Here is the correct command to use for some editors::
 Where to find saved items and configuration?
 --------------------------------------------
 
-You can find configuration and saved items in:
+Configuration is stored in:
 
 a. Windows folder ``%APPDATA%\copyq`` for installed version of CopyQ.
 b. Windows sub-folder ``config`` in unzipped portable version of CopyQ.
 c. Linux directory ``~/.config/copyq``.
-d. In a directory specific to a given CopyQ instance - see :ref:`sessions`.
+d. In a directory specific to a given CopyQ instance — see :ref:`sessions`.
 
-Run ``copyq info config`` to get absolute path to the configuration file
-(parent directory contains saved items).
+Run ``copyq info config`` to get absolute path to the configuration file.
+
+.. versionchanged:: 17.0.0
+   Tab data files and item data are in the data directory, and UI state
+   files and logs are in the state directory. Use ``copyq info data``,
+   ``copyq info state`` and ``copyq info log`` to find the exact paths.
+   See :ref:`sessions` for details.
 
 Why are items and configuration not saved?
 ------------------------------------------
@@ -445,12 +487,19 @@ Alternatively, run the following command::
 Why does encryption ask for password so often?
 ----------------------------------------------
 
-Encryption plugin uses ``gpg2`` to decrypt tabs and items. The password usually
-needs to be entered only once every few minutes.
+With built-in encryption (the recommended approach), CopyQ asks for the
+password at startup and when changing the encryption password. If **Require
+password after an interval** is enabled (in the "History" configuration tab),
+the password is also requested periodically. The startup prompt can be avoided
+by enabling the **Use external key store** option, which stores the password in
+the platform key store (Windows Credential Store, macOS Keychain, GNOME Keyring,
+or KWallet) — but the periodic prompt, if enabled, still applies.
 
-If the password prompt is showing up too often, either increase tab unloading
-interval ("Unload tab after an interval" option in "History" tab in
-Preferences), or change ``gpg`` configuration (see `#946
+If you are using the legacy **Encryption plugin** (which relies on ``gpg2``),
+the password usually needs to be re-entered once every few minutes. To reduce
+prompts, either increase the tab unloading interval ("Unload tab after an
+interval" option in "History" tab in Preferences) or change ``gpg``
+configuration (see `#946
 <https://github.com/hluk/CopyQ/issues/946#issuecomment-389538964>`__).
 
 How to fix "copyq: command not found" errors?
@@ -477,6 +526,63 @@ you can **fix it by using** ``COPYQ`` environment variable instead.
     bash:
     text="SOME TEXT"
     "$COPYQ" copy "$text"
+
+.. _faq-memory-usage:
+
+How can I reduce CopyQ memory usage?
+------------------------------------
+
+When a tab is loaded, its item data are kept in memory. This includes smaller
+items (stored in the tab data file) and visible larger items (stored in
+separate files in data directory). A tab data loads when it is first accessed
+and stays resident until explicitly unloaded, the unload interval expires,
+configuration changes, or the application restarts.
+
+Each item can include multiple data formats. By default new items are
+automatically added when the clipboard changes. The stored formats depend on
+which plugins are loaded and any custom commands that modify clipboard
+processing.
+
+In version 14.0.0 and later, you can copy memory statistics to the clipboard
+by running the following command in the Action dialog (``F5``) or a terminal::
+
+    copyq stats | copyq copy -
+
+Key lines to look at:
+
+- ``MODEL`` lines — in-memory data size for loaded tabs and other data models.
+- ``DATA_DIR`` — item data directory size. Larger item data (above the
+  ``item_data_threshold`` option, default 1024 bytes) are stored as separate
+  files here and loaded into memory only when the item is displayed or read.
+  Smaller data are stored directly in tab data files and loaded with the tab.
+- ``TABS: total=N, loaded=N`` — how many tabs are loaded vs total.
+- ``MEMORY: rss=...`` — process resident memory.
+
+See :js:func:`stats` API documentation for details.
+
+Options to reduce memory usage:
+
+- Reduce maximum items per tab — the default is 200. Lower it in
+  Preferences in the History section.
+- Enable "Unload tab after an interval" in the History section in Preferences.
+  Tabs that have not been accessed recently will be unloaded automatically.
+  You can also unload all tabs on demand with :js:func:`unload` or
+  :js:func:`forceUnload`.
+- Disable unused item plugins in Preferences in the Items section. Plugins for
+  images, rich text and other non-text formats keep extra data per item.
+- Lower ``item_data_threshold`` so that more item data are stored as separate
+  files instead of inline in the tab data file. Data in separate files are
+  loaded only on demand, while inline data are loaded with the entire tab.
+  For example, to store all item data as separate files::
+
+      copyq config item_data_threshold 0
+
+  Conversely, ``-1`` disables the data directory and stores everything inline,
+  which can speed up item lookups but increases memory usage.
+
+  Changing this options has effect only when tab is saved again (items change).
+
+See also :ref:`faq-config-path` for finding data files.
 
 What to do when CopyQ crashes or misbehaves?
 --------------------------------------------

@@ -1,28 +1,10 @@
-/*
-    Copyright (c) 2020, Lukas Holecek <hluk@email.cz>
+// SPDX-License-Identifier: GPL-3.0-or-later
 
-    This file is part of CopyQ.
+#pragma once
 
-    CopyQ is free software: you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation, either version 3 of the License, or
-    (at your option) any later version.
-
-    CopyQ is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
-
-    You should have received a copy of the GNU General Public License
-    along with CopyQ.  If not, see <http://www.gnu.org/licenses/>.
-*/
-
-#ifndef CLIPBOARDBROWSER_H
-#define CLIPBOARDBROWSER_H
 
 #include "common/clipboardmode.h"
 #include "gui/clipboardbrowsershared.h"
-#include "gui/theme.h"
 #include "item/clipboardmodel.h"
 #include "item/itemdelegate.h"
 #include "item/itemfilter.h"
@@ -34,11 +16,9 @@
 #include <QVariantMap>
 #include <QVector>
 
-#include <memory>
-
 class ItemEditorWidget;
 class ItemFactory;
-class PersistentDisplayItem;
+class QPersistentModelIndex;
 class QProgressBar;
 class QPushButton;
 
@@ -65,6 +45,7 @@ class ClipboardBrowser final : public QListView
 
         /** Sort selected items. */
         void sortItems(const QModelIndexList &indexes);
+        void sortItems(const QList<QPersistentModelIndex> &sorted);
 
         /** Reverse order of selected items. */
         void reverseItems(const QModelIndexList &indexes);
@@ -115,10 +96,9 @@ class ClipboardBrowser final : public QListView
 
         QVariantMap copyIndexes(const QModelIndexList &indexes) const;
 
-        /** Remove items and return smallest row number (new current item if selection was removed). */
-        int removeIndexes(const QModelIndexList &indexes, QString *error = nullptr);
+        void removeIndexes(const QModelIndexList &indexes, QString *error = nullptr);
 
-        bool canRemoveItems(const QModelIndexList &indexes, QString *error = nullptr) const;
+        bool canRemoveItems(const QModelIndexList &indexes, QString *error = nullptr);
 
         /** Render preview image with items. */
         QPixmap renderItemPreview(const QModelIndexList &indexes, int maxWidth, int maxHeight);
@@ -141,12 +121,16 @@ class ClipboardBrowser final : public QListView
                 int row = 0 //!< Target row for the new item (negative to append item).
                 );
 
+        bool addReversed(const QVector<QVariantMap> &dataList, int row);
+
         bool addAndSelect(const QVariantMap &data, int row);
 
         /**
          * Add item and remove duplicates.
          */
         void addUnique(const QVariantMap &data, ClipboardMode mode);
+
+        void setItemsData(const QMap<QPersistentModelIndex, QVariantMap> &itemsData);
 
         /** Number of items in list. */
         int length() const { return m.rowCount(); }
@@ -160,9 +144,9 @@ class ClipboardBrowser final : public QListView
         /** Show only items matching the regular expression. */
         void filterItems(const ItemFilterPtr &filter);
         /** Open editor. */
-        bool openEditor(const QByteArray &textData, bool changeClipboard = false);
+        bool openEditor(const QModelIndex &index, const QString &format, const QByteArray &content, bool changeClipboard = false);
         /** Open editor for an item. */
-        bool openEditor(const QModelIndex &index);
+        bool openEditor(const QModelIndex &index, const QString &format);
 
         /** Set current item. */
         void setCurrent(int row, bool keepSelection = false, bool setCurrentOnly = false);
@@ -176,12 +160,10 @@ class ClipboardBrowser final : public QListView
          * Create and edit new item.
          */
         void editNew(
-                const QString &text = QString(), //!< Text of new item.
-                bool changeClipboard = false //!< Change clipboard if item is modified.
-                );
+            const QString &format, const QByteArray &content, bool changeClipboard = false);
 
         /** Edit item in given @a row. */
-        void editRow(int row);
+        void editRow(int row, const QString &format);
 
         void move(int key);
 
@@ -198,14 +180,12 @@ class ClipboardBrowser final : public QListView
          * This function does nothing if model is disabled (e.g. loading failed previously).
          * @see setID, saveItems
          */
-        bool loadItems();
+        bool loadItems(const QByteArray &itemData = QByteArray());
 
         /**
          * Return true only if row is filtered and should be hidden.
          */
         bool isFiltered(int row) const;
-
-        QVariantMap itemData(const QModelIndex &index) const;
 
         bool isLoaded() const;
 
@@ -235,9 +215,13 @@ class ClipboardBrowser final : public QListView
 
         void emitItemCount();
 
-        bool eventFilter(QObject *watched, QEvent *event) override;
+        using QListView::isIndexHidden;
+        using QListView::isRowHidden;
+        using QListView::verticalOffset;
 
     signals:
+        void runOnRemoveItemsHandler(const QList<QPersistentModelIndex> &indexes, bool *canRemove);
+
         /** Show list request. */
         void requestShow(const ClipboardBrowser *self);
         /** Request clipboard change. */
@@ -266,6 +250,8 @@ class ClipboardBrowser final : public QListView
 
         void itemWidgetCreated(const PersistentDisplayItem &selection);
 
+        void filterProgressChanged(int percent);
+
     protected:
         void keyPressEvent(QKeyEvent *event) override;
         void contextMenuEvent(QContextMenuEvent *) override;
@@ -287,11 +273,9 @@ class ClipboardBrowser final : public QListView
         void mouseReleaseEvent(QMouseEvent *event) override;
         void mouseMoveEvent(QMouseEvent *event) override;
 
-#if QT_VERSION >= QT_VERSION_CHECK(6,0,0)
         void enterEvent(QEnterEvent *event) override;
-#else
-        void enterEvent(QEvent *event) override;
-#endif
+
+        void scrollContentsBy(int dx, int dy) override;
 
         void doItemsLayout() override;
 
@@ -332,7 +316,6 @@ class ClipboardBrowser final : public QListView
          * @return true only if hidden
          */
         bool hideFiltered(int row);
-        bool hideFiltered(const QModelIndex &index);
 
         /**
          * Connects signals and starts external editor.
@@ -341,7 +324,7 @@ class ClipboardBrowser final : public QListView
 
         void setEditorWidget(ItemEditorWidget *editor, bool changeClipboard = false);
 
-        void editItem(const QModelIndex &index, bool editNotes = false, bool changeClipboard = false);
+        void editItem(const QModelIndex &index, const QString &format = QString(), bool changeClipboard = false);
 
         void updateEditorGeometry();
 
@@ -353,7 +336,7 @@ class ClipboardBrowser final : public QListView
          */
         QModelIndex indexNear(int offset) const;
 
-        int getDropRow(QPoint position);
+        int getDropRow(QPoint position) const;
 
         void connectModelAndDelegate();
 
@@ -364,16 +347,17 @@ class ClipboardBrowser final : public QListView
         void processDragAndDropEvent(QDropEvent *event);
 
         /// Removes indexes without notifying or asking plugins.
-        int dropIndexes(const QModelIndexList &indexes);
+        void dropIndexes(const QModelIndexList &indexes);
+        void dropIndexes(QList<QPersistentModelIndex> &indexes);
 
         void focusEditedIndex();
 
         int findNextVisibleRow(int row);
         int findPreviousVisibleRow(int row);
+        int findVisibleRowFrom(int row);
 
         void preloadCurrentPage();
-        void preloadCurrentPageLater();
-        void preload(int pixels, bool above, const QModelIndex &start);
+        void preload(int pixels, int direction, const QModelIndex &start);
 
         void updateCurrentIndex();
 
@@ -384,6 +368,10 @@ class ClipboardBrowser final : public QListView
         QModelIndex firstUnpinnedIndex() const;
 
         void dragDropScroll();
+
+        int currentRowFromSearch(const QString &search);
+
+        void filterBatch(int filterId, const QPersistentModelIndex &lastIndex);
 
         ItemSaverPtr m_itemSaver;
 
@@ -411,9 +399,7 @@ class ClipboardBrowser final : public QListView
         int m_dragTargetRow;
         QPoint m_dragStartPosition;
 
-        int m_filterRow = -1;
-
         bool m_selectNewItems = false;
-};
 
-#endif // CLIPBOARDBROWSER_H
+        int m_lastFilterId = 0;
+};

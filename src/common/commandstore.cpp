@@ -1,21 +1,4 @@
-/*
-    Copyright (c) 2020, Lukas Holecek <hluk@email.cz>
-
-    This file is part of CopyQ.
-
-    CopyQ is free software: you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation, either version 3 of the License, or
-    (at your option) any later version.
-
-    CopyQ is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
-
-    You should have received a copy of the GNU General Public License
-    along with CopyQ.  If not, see <http://www.gnu.org/licenses/>.
-*/
+// SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "commandstore.h"
 
@@ -32,6 +15,10 @@
 
 namespace {
 
+const QLatin1String falseString("false");
+const QLatin1String trueString("true");
+const QRegularExpression nameLocalizationRe(R"(^Name(?:_(.*))?$)");
+
 void normalizeLineBreaks(QString &cmd)
 {
     if (cmd.startsWith("\n    ")) {
@@ -46,68 +33,86 @@ void normalizeLineBreaks(QString &cmd)
 void loadCommand(const QSettings &settings, Commands *commands)
 {
     Command c;
-    c.enable = settings.value("Enable", true).toBool();
 
-    c.name = settings.value("Name").toString();
-    c.re   = QRegularExpression( settings.value("Match").toString() );
-    c.wndre = QRegularExpression( settings.value("Window").toString() );
-    c.matchCmd = settings.value("MatchCommand").toString();
-    c.cmd = settings.value("Command").toString();
-    c.sep = settings.value("Separator").toString();
-
-    c.input = settings.value("Input").toString();
-    if ( c.input == "false" || c.input == "true" )
-        c.input = c.input == "true" ? QString(mimeText) : QString();
-
-    c.output = settings.value("Output").toString();
-    if ( c.output == "false" || c.output == "true" )
-        c.output = c.output == "true" ? QString(mimeText) : QString();
-
-    c.wait = settings.value("Wait").toBool();
-    c.automatic = settings.value("Automatic").toBool();
-    c.display = settings.value("Display").toBool();
-    c.transform = settings.value("Transform").toBool();
-    c.hideWindow = settings.value("HideWindow").toBool();
-    c.icon = settings.value("Icon").toString();
-    c.shortcuts = settings.value("Shortcut").toStringList();
-    c.globalShortcuts = settings.value("GlobalShortcut").toStringList();
-    c.tab = settings.value("Tab").toString();
-    c.outputTab = settings.value("OutputTab").toString();
-    c.internalId = settings.value("InternalId").toString();
-    c.inMenu = settings.value("InMenu").toBool();
-    c.isScript = settings.value("IsScript").toBool();
-
-    const auto globalShortcutsOption = settings.value("IsGlobalShortcut");
-    if ( globalShortcutsOption.isValid() ) {
-        c.isGlobalShortcut = settings.value("IsGlobalShortcut").toBool();
-    } else {
-        // Backwards compatibility with v3.1.2 and below.
-        if ( c.globalShortcuts.contains("DISABLED") )
-            c.globalShortcuts.clear();
-        c.isGlobalShortcut = !c.globalShortcuts.isEmpty();
+    for (auto &&key : settings.childKeys()) {
+        if (key == QLatin1String("Enable")) {
+            c.enable = settings.value(key).toBool();
+        } else if (auto match = nameLocalizationRe.match(key); match.hasMatch()) {
+            const QString languageCode = match.captured(1);
+            const QString value = settings.value(key).toString();
+            if (languageCode.isEmpty())
+                c.name = value;
+            else
+                c.nameLocalization[languageCode] = value;
+        } else if (key == QLatin1String("Match")) {
+            c.re = QRegularExpression( settings.value(key).toString() );
+        } else if (key == QLatin1String("Window")) {
+            c.wndre = QRegularExpression( settings.value(key).toString() );
+        } else if (key == QLatin1String("MatchCommand")) {
+            c.matchCmd = settings.value(key).toString();
+        } else if (key == QLatin1String("Command")) {
+            c.cmd = settings.value(key).toString();
+        } else if (key == QLatin1String("Separator")) {
+            c.sep = settings.value(key).toString();
+        } else if (key == QLatin1String("Input")) {
+            c.input = settings.value(key).toString();
+            if (c.input == falseString || c.input == trueString)
+                c.input = c.input == trueString ? mimeText : QLatin1String();
+        } else if (key == QLatin1String("Output")) {
+            c.output = settings.value(key).toString();
+            if (c.output == falseString || c.output == trueString)
+                c.output = c.output == trueString ? mimeText : QLatin1String();
+        } else if (key == QLatin1String("Wait")) {
+            c.wait = settings.value(key).toBool();
+        } else if (key == QLatin1String("Automatic")) {
+            c.automatic = settings.value(key).toBool();
+        } else if (key == QLatin1String("Display")) {
+            c.display = settings.value(key).toBool();
+        } else if (key == QLatin1String("Transform")) {
+            c.transform = settings.value(key).toBool();
+        } else if (key == QLatin1String("HideWindow")) {
+            c.hideWindow = settings.value(key).toBool();
+        } else if (key == QLatin1String("Icon")) {
+            c.icon = settings.value(key).toString();
+        } else if (key == QLatin1String("Shortcut")) {
+            c.shortcuts = settings.value(key).toStringList();
+        } else if (key == QLatin1String("GlobalShortcut")) {
+            c.globalShortcuts = settings.value(key).toStringList();
+        } else if (key == QLatin1String("Tab")) {
+            c.tab = settings.value(key).toString();
+        } else if (key == QLatin1String("OutputTab")) {
+            c.outputTab = settings.value(key).toString();
+        } else if (key == QLatin1String("InternalId")) {
+            c.internalId = settings.value(key).toString();
+        } else if (key == QLatin1String("InMenu")) {
+            c.inMenu = settings.value(key).toBool();
+        } else if (key == QLatin1String("IsScript")) {
+            c.isScript = settings.value(key).toBool();
+        } else if (key == QLatin1String("IsGlobalShortcut")) {
+            c.isGlobalShortcut = settings.value(key).toBool();
+        } else if (key == QLatin1String("Remove")) {
+            c.remove = settings.value(key).toBool();
+        } else if (key == QLatin1String("Ignore") && settings.value(key).toBool()) {
+            c.remove = c.automatic = true;
+        }
     }
-
-    if (settings.value("Ignore").toBool())
-        c.remove = c.automatic = true;
-    else
-        c.remove = settings.value("Remove").toBool();
 
     commands->append(c);
 }
 
-void saveValue(const char *key, const QRegularExpression &re, QSettings *settings)
+void saveValue(const QString &key, const QRegularExpression &re, QSettings *settings)
 {
     settings->setValue(key, re.pattern());
 }
 
-void saveValue(const char *key, const QVariant &value, QSettings *settings)
+void saveValue(const QString &key, const QVariant &value, QSettings *settings)
 {
     settings->setValue(key, value);
 }
 
 /// Save only modified command properties.
 template <typename Member>
-void saveNewValue(const char *key, const Command &command, const Member &member, QSettings *settings)
+void saveNewValue(const QString &key, const Command &command, const Member &member, QSettings *settings)
 {
     if (command.*member != Command().*member)
         saveValue(key, command.*member, settings);
@@ -115,35 +120,40 @@ void saveNewValue(const char *key, const Command &command, const Member &member,
 
 void saveCommand(const Command &c, QSettings *settings)
 {
-    saveNewValue("Name", c, &Command::name, settings);
-    saveNewValue("Match", c, &Command::re, settings);
-    saveNewValue("Window", c, &Command::wndre, settings);
-    saveNewValue("MatchCommand", c, &Command::matchCmd, settings);
-    saveNewValue("Command", c, &Command::cmd, settings);
-    saveNewValue("Input", c, &Command::input, settings);
-    saveNewValue("Output", c, &Command::output, settings);
+    saveNewValue(QStringLiteral("Name"), c, &Command::name, settings);
+    saveNewValue(QStringLiteral("Match"), c, &Command::re, settings);
+    saveNewValue(QStringLiteral("Window"), c, &Command::wndre, settings);
+    saveNewValue(QStringLiteral("MatchCommand"), c, &Command::matchCmd, settings);
+    saveNewValue(QStringLiteral("Command"), c, &Command::cmd, settings);
+    saveNewValue(QStringLiteral("Input"), c, &Command::input, settings);
+    saveNewValue(QStringLiteral("Output"), c, &Command::output, settings);
 
     // Separator for new command is set to '\n' for convenience.
     // But this value shouldn't be saved if output format is not set.
-    if ( c.sep != "\\n" || !c.output.isEmpty() )
-        saveNewValue("Separator", c, &Command::sep, settings);
+    if ( c.sep != QLatin1String("\\n") || !c.output.isEmpty() )
+        saveNewValue(QStringLiteral("Separator"), c, &Command::sep, settings);
 
-    saveNewValue("Wait", c, &Command::wait, settings);
-    saveNewValue("Automatic", c, &Command::automatic, settings);
-    saveNewValue("Display", c, &Command::display, settings);
-    saveNewValue("InMenu", c, &Command::inMenu, settings);
-    saveNewValue("IsGlobalShortcut", c, &Command::isGlobalShortcut, settings);
-    saveNewValue("IsScript", c, &Command::isScript, settings);
-    saveNewValue("Transform", c, &Command::transform, settings);
-    saveNewValue("Remove", c, &Command::remove, settings);
-    saveNewValue("HideWindow", c, &Command::hideWindow, settings);
-    saveNewValue("Enable", c, &Command::enable, settings);
-    saveNewValue("Icon", c, &Command::icon, settings);
-    saveNewValue("Shortcut", c, &Command::shortcuts, settings);
-    saveNewValue("GlobalShortcut", c, &Command::globalShortcuts, settings);
-    saveNewValue("Tab", c, &Command::tab, settings);
-    saveNewValue("OutputTab", c, &Command::outputTab, settings);
-    saveNewValue("InternalId", c, &Command::internalId, settings);
+    saveNewValue(QStringLiteral("Wait"), c, &Command::wait, settings);
+    saveNewValue(QStringLiteral("Automatic"), c, &Command::automatic, settings);
+    saveNewValue(QStringLiteral("Display"), c, &Command::display, settings);
+    saveNewValue(QStringLiteral("InMenu"), c, &Command::inMenu, settings);
+    saveNewValue(QStringLiteral("IsGlobalShortcut"), c, &Command::isGlobalShortcut, settings);
+    saveNewValue(QStringLiteral("IsScript"), c, &Command::isScript, settings);
+    saveNewValue(QStringLiteral("Transform"), c, &Command::transform, settings);
+    saveNewValue(QStringLiteral("Remove"), c, &Command::remove, settings);
+    saveNewValue(QStringLiteral("HideWindow"), c, &Command::hideWindow, settings);
+    saveNewValue(QStringLiteral("Enable"), c, &Command::enable, settings);
+    saveNewValue(QStringLiteral("Icon"), c, &Command::icon, settings);
+    saveNewValue(QStringLiteral("Shortcut"), c, &Command::shortcuts, settings);
+    saveNewValue(QStringLiteral("GlobalShortcut"), c, &Command::globalShortcuts, settings);
+    saveNewValue(QStringLiteral("Tab"), c, &Command::tab, settings);
+    saveNewValue(QStringLiteral("OutputTab"), c, &Command::outputTab, settings);
+    saveNewValue(QStringLiteral("InternalId"), c, &Command::internalId, settings);
+
+    for (auto it = c.nameLocalization.constBegin(); it != c.nameLocalization.constEnd(); ++it) {
+        const auto key = QStringLiteral("Name_%1").arg(it.key());
+        saveValue(key, it.value(), settings);
+    }
 }
 
 Commands importCommands(QSettings *settings)
@@ -162,14 +172,14 @@ Commands importCommands(QSettings *settings)
 
 Commands loadAllCommands()
 {
-    const QString commandConfigPath = getConfigurationFilePath("-commands.ini");
+    const QString commandConfigPath = configurationFilePath("-commands.ini");
     return importCommandsFromFile(commandConfigPath);
 }
 
 void saveCommands(const Commands &commands)
 {
-    Settings settings(getConfigurationFilePath("-commands.ini"));
-    saveCommands(commands, settings.settingsData());
+    Settings settings(configurationFilePath("-commands.ini"));
+    saveCommands(commands, &settings);
 }
 
 Commands loadCommands(QSettings *settings)
@@ -239,7 +249,7 @@ Commands importCommandsFromText(const QString &commands)
 
 QString exportCommands(const Commands &commands)
 {
-    TemporarySettings temporarySettings;
+    TemporarySettings temporarySettings({});
     saveCommands( commands, temporarySettings.settings() );
 
     // Replace ugly '\n' with indented lines.

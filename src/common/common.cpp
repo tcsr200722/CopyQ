@@ -1,24 +1,8 @@
-/*
-    Copyright (c) 2020, Lukas Holecek <hluk@email.cz>
-
-    This file is part of CopyQ.
-
-    CopyQ is free software: you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation, either version 3 of the License, or
-    (at your option) any later version.
-
-    CopyQ is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
-
-    You should have received a copy of the GNU General Public License
-    along with CopyQ.  If not, see <http://www.gnu.org/licenses/>.
-*/
+// SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "common/common.h"
 
+#include "common/clipboarddataguard.h"
 #include "common/display.h"
 #include "common/log.h"
 #include "common/mimetypes.h"
@@ -41,18 +25,8 @@
 #include <QThread>
 #include <QUrl>
 
-#if QT_VERSION < QT_VERSION_CHECK(6,0,0)
-#   include <QTextCodec>
-using Encoding = QTextCodec*;
-#else
-#   include <QStringDecoder>
+#include <QStringDecoder>
 using Encoding = std::optional<QStringConverter::Encoding>;
-#endif
-
-#ifdef COPYQ_WS_X11
-# include "platform/x11/x11platform.h"
-# include <QTimer>
-#endif
 
 #include <algorithm>
 #include <memory>
@@ -61,190 +35,23 @@ namespace {
 
 const int maxElidedTextLineLength = 512;
 
-#ifdef COPYQ_WS_X11
-// WORKAROUND: This fixes stuck clipboard access by creating dummy X11 events
-//             when accessing clipboard takes too long.
-class WakeUpThread final {
-public:
-    WakeUpThread()
-    {
-        m_timerWakeUp.setInterval(100);
-        QObject::connect( &m_timerWakeUp, &QTimer::timeout, []() {
-            sendDummyX11Event();
-        });
-
-        m_timerWakeUp.moveToThread(&m_wakeUpThread);
-        QObject::connect( &m_wakeUpThread, &QThread::started,
-                          &m_timerWakeUp, [this]() { m_timerWakeUp.start(); } );
-        QObject::connect( &m_wakeUpThread, &QThread::finished,
-                          &m_timerWakeUp, &QTimer::stop );
-        m_wakeUpThread.start();
-    }
-
-    ~WakeUpThread()
-    {
-        m_wakeUpThread.quit();
-        m_wakeUpThread.wait();
-    }
-
-private:
-    QTimer m_timerWakeUp;
-    QThread m_wakeUpThread;
-};
-#endif
-
 class MimeData final : public QMimeData {
 protected:
-#if QT_VERSION >= QT_VERSION_CHECK(6,0,0)
     QVariant retrieveData(const QString &mimeType, QMetaType preferredType) const override
-#else
-    QVariant retrieveData(const QString &mimeType, QVariant::Type preferredType) const override
-#endif
     {
-        COPYQ_LOG_VERBOSE( QString("Providing \"%1\"").arg(mimeType) );
+        COPYQ_LOG_VERBOSE( QStringLiteral("Providing \"%1\"").arg(mimeType) );
         return QMimeData::retrieveData(mimeType, preferredType);
     }
 };
 
-// Avoids accessing old clipboard/drag'n'drop data.
-class ClipboardDataGuard final {
-public:
-    class ElapsedGuard {
-    public:
-        explicit ElapsedGuard(const QString &format)
-            : m_format(format)
-        {
-            COPYQ_LOG_VERBOSE( QString("Accessing \"%1\"").arg(format) );
-            m_elapsed.start();
-        }
-
-        ~ElapsedGuard()
-        {
-            const auto t = m_elapsed.elapsed();
-            if (t > 500)
-                log( QString("ELAPSED %1 ms acessing \"%2\"").arg(t).arg(m_format), LogWarning );
-        }
-    private:
-        QString m_format;
-        QElapsedTimer m_elapsed;
-    };
-
-    explicit ClipboardDataGuard(const QMimeData &data, bool *abortCloning = nullptr)
-        : m_dataGuard(&data)
-        , m_abort(abortCloning)
-    {
-        m_timerExpire.start();
-    }
-
-    bool hasFormat(const QString &mime)
-    {
-        ElapsedGuard _("has:" + mime);
-        return refresh() && m_dataGuard->hasFormat(mime);
-    }
-
-    QByteArray data(const QString &mime)
-    {
-        ElapsedGuard _(mime);
-        return refresh() ? m_dataGuard->data(mime) : QByteArray();
-    }
-
-    QList<QUrl> urls()
-    {
-        ElapsedGuard _("urls");
-        return refresh() ? m_dataGuard->urls() : QList<QUrl>();
-    }
-
-    QString text()
-    {
-        ElapsedGuard _("text");
-        return refresh() ? m_dataGuard->text() : QString();
-    }
-
-    bool hasText()
-    {
-        ElapsedGuard _("hasText");
-        return refresh() && m_dataGuard->hasText();
-    }
-
-    QImage getImageData()
-    {
-        ElapsedGuard _("imageData");
-        if (!refresh())
-            return QImage();
-
-        // NOTE: Application hangs if using mulitple sessions and
-        //       calling QMimeData::hasImage() on X11 clipboard.
-        COPYQ_LOG_VERBOSE("Fetching image data from clipboard");
-        const QImage image = m_dataGuard->imageData().value<QImage>();
-        COPYQ_LOG_VERBOSE( QString("Image is %1").arg(image.isNull() ? "invalid" : "valid") );
-        return image;
-    }
-
-    QByteArray getUtf8Data(const QString &format)
-    {
-        ElapsedGuard _("UTF8:" + format);
-        if (!refresh())
-            return QByteArray();
-
-        if (format == mimeUriList) {
-            QByteArray bytes;
-            for ( const auto &url : urls() ) {
-                if ( !bytes.isEmpty() )
-                    bytes += '\n';
-                bytes += url.toString().toUtf8();
-            }
-            return bytes;
-        }
-
-        if ( format == mimeText && !hasFormat(mimeText) )
-            return text().toUtf8();
-
-        if ( format.startsWith("text/") )
-            return dataToText( data(format), format ).toUtf8();
-
-        return data(format);
-    }
-
-private:
-    bool refresh()
-    {
-        if (m_abort && *m_abort)
-            return false;
-
-        if (m_dataGuard.isNull())
-            return false;
-
-        const auto elapsed = m_timerExpire.elapsed();
-        if (elapsed > 5000) {
-            log("Clipboard data expired, refusing to access old data", LogWarning);
-            m_dataGuard = nullptr;
-            return false;
-        }
-
-        if (elapsed > 100)
-            QCoreApplication::processEvents();
-
-        return !m_dataGuard.isNull();
-    }
-
-    QPointer<const QMimeData> m_dataGuard;
-    QElapsedTimer m_timerExpire;
-    bool *m_abort = nullptr;
-
-#ifdef COPYQ_WS_X11
-    WakeUpThread m_wakeUpThread;
-#endif
-};
-
 QString getImageFormatFromMime(const QString &mime)
 {
-    const auto imageMimePrefix = "image/";
-    const auto prefixLength = static_cast<int>(strlen(imageMimePrefix));
-    return mime.startsWith(imageMimePrefix) ? mime.mid(prefixLength) : QString();
+    static const QString imageMimePrefix = QStringLiteral("image/");
+    return mime.startsWith(imageMimePrefix) ? mime.mid(imageMimePrefix.length()) : QString();
 }
 
 /**
- * Sometimes only Qt internal image data are available in cliboard,
+ * Sometimes only Qt internal image data are available in clipboard,
  * so this tries to convert the image data (if available) to given format.
  */
 void cloneImageData(
@@ -261,9 +68,9 @@ void cloneImageData(
     QBuffer buffer;
     bool saved = image.save(&buffer, format.toUtf8().constData());
 
-    COPYQ_LOG( QString("Converting image to \"%1\" format: %2")
+    COPYQ_LOG( QStringLiteral("Converting image to \"%1\" format: %2")
                .arg(format,
-                    saved ? "Done" : "Failed") );
+                    saved ? QStringLiteral("Done") : QStringLiteral("Failed")) );
 
     if (saved)
         dataMap->insert(mime, buffer.buffer());
@@ -279,24 +86,16 @@ bool canCloneImageData(const QImage &image)
         && image.width() <= 4096;
 }
 
-bool setImageData(const QVariantMap &data, const QString &mime, QMimeData *mimeData)
+bool setImageData(
+    QByteArray &bytes, const char *imageFormat, const std::unique_ptr<QMimeData> &mimeData)
 {
-    if ( !data.contains(mime) )
-        return false;
-
-    const QString imageFormat = getImageFormatFromMime(mime);
-    if ( imageFormat.isEmpty() )
-        return false;
-
-    QByteArray bytes = data.value(mime).toByteArray();
-
     // Omit converting animated images to static ones.
     QBuffer buffer(&bytes);
-    QMovie animatedImage( &buffer, imageFormat.toUtf8().constData() );
+    const QMovie animatedImage(&buffer, imageFormat);
     if ( animatedImage.frameCount() > 1 )
         return false;
 
-    const QImage image = QImage::fromData( bytes, imageFormat.toUtf8().constData() );
+    const auto image = QImage::fromData(bytes, imageFormat);
     if ( image.isNull() )
         return false;
 
@@ -304,13 +103,17 @@ bool setImageData(const QVariantMap &data, const QString &mime, QMimeData *mimeD
     return true;
 }
 
+bool setImageData(
+    const QVariantMap &data, const QString &mime, const char *imageFormat, const std::unique_ptr<QMimeData> &mimeData)
+{
+    QByteArray imageData = data.value(mime).toByteArray();
+    return !imageData.isEmpty()
+        && setImageData(imageData, imageFormat, mimeData);
+}
+
 Encoding encodingForName(const char *name)
 {
-#if QT_VERSION < QT_VERSION_CHECK(6,0,0)
-    return QTextCodec::codecForName(name);
-#else
     return QStringConverter::encodingForName(name);
-#endif
 }
 
 Encoding encodingForText(const QByteArray &bytes)
@@ -344,19 +147,17 @@ bool findFormatsWithPrefix(bool hasPrefix, const QString &prefix, const QVariant
     return !hasPrefix;
 }
 
-} // namespace
-
-bool isMainThread()
+bool isBinaryImageFormat(const QString &format)
 {
-    return QThread::currentThread() == qApp->thread();
+    return format.startsWith(QStringLiteral("image/"))
+           && !format.contains(QStringLiteral("xml"))
+           && !format.contains(QStringLiteral("svg"));
 }
 
-QVariantMap cloneData(const QMimeData &rawData, QStringList formats, bool *abortCloning)
+} // namespace
+
+QVariantMap cloneData(ClipboardDataGuard &data, const QStringList &formats)
 {
-    ClipboardDataGuard data(rawData, abortCloning);
-
-    const auto internalMimeTypes = {mimeOwner, mimeWindowTitle, mimeItemNotes, mimeHidden};
-
     QVariantMap newdata;
 
     /*
@@ -368,30 +169,20 @@ QVariantMap cloneData(const QMimeData &rawData, QStringList formats, bool *abort
      Images in SVG and other XML formats are expected to be relatively small
      so these doesn't have to be ignored.
      */
-    if ( formats.contains(mimeText) && data.hasText() ) {
-        const QString mimeImagePrefix = "image/";
-        const auto first = std::remove_if(
-                    std::begin(formats), std::end(formats),
-                    [&mimeImagePrefix](const QString &format) {
-                        return format.startsWith(mimeImagePrefix)
-                            && !format.contains("xml")
-                            && !format.contains("svg");
-                    });
-        formats.erase(first, std::end(formats));
-    }
+    const bool skipBinaryImageFormats = formats.contains(mimeText) && data.hasText();
 
     QStringList imageFormats;
     for (const auto &mime : formats) {
-        const QByteArray bytes = data.getUtf8Data(mime);
-        if ( bytes.isEmpty() )
-            imageFormats.append(mime);
-        else
-            newdata.insert(mime, bytes);
-    }
-
-    for (const auto &internalMime : internalMimeTypes) {
-        if ( data.hasFormat(internalMime) )
-            newdata.insert( internalMime, data.data(internalMime) );
+        if (isBinaryImageFormat(mime)) {
+            if (!skipBinaryImageFormats)
+                imageFormats.append(mime);
+        } else {
+            const QByteArray bytes = data.getUtf8Data(mime);
+            if ( bytes.isEmpty() )
+                imageFormats.append(mime);
+            else
+                newdata.insert(mime, bytes);
+        }
     }
 
     // Retrieve images last since this can take a while.
@@ -406,6 +197,9 @@ QVariantMap cloneData(const QMimeData &rawData, QStringList formats, bool *abort
         }
     }
 
+    if (data.isExpired())
+        return {};
+
     // Drop duplicate UTF-8 text format.
     if ( newdata.contains(mimeTextUtf8) && newdata[mimeTextUtf8] == newdata.value(mimeText) )
         newdata.remove(mimeTextUtf8);
@@ -413,28 +207,64 @@ QVariantMap cloneData(const QMimeData &rawData, QStringList formats, bool *abort
     return newdata;
 }
 
-QVariantMap cloneData(const QMimeData &data)
+QVariantMap cloneData(const QMimeData *rawData, const QStringList &formats, const long int *clipboardSequenceNumber)
 {
+    ClipboardDataGuard data(rawData, clipboardSequenceNumber);
+    return cloneData(data, formats);
+}
+
+QVariantMap cloneData(const QMimeData *rawData)
+{
+    ClipboardDataGuard data(rawData);
+
+    static const QSet<QString> ignoredFormats({
+        mimeOwner,
+        mimeClipboardMode,
+        mimeCurrentTab,
+        mimeSelectedItems,
+        mimeCurrentItem,
+        mimeShortcut,
+        mimeOutputTab,
+    });
+
+    const QStringList availableFormats = data.formats();
+
     QStringList formats;
 
-    for ( const auto &mime : data.formats() ) {
+    bool skipBinaryImages = formats.contains(mimeText) && data.hasText();
+    if (!skipBinaryImages && availableFormats.contains(QStringLiteral("image/png")) ) {
+        formats.append(QStringLiteral("image/png"));
+        if ( availableFormats.contains(QStringLiteral("image/webp")) )
+            formats.append(QStringLiteral("image/webp"));
+        if ( availableFormats.contains(QStringLiteral("image/gif")) )
+            formats.append(QStringLiteral("image/gif"));
+        skipBinaryImages = true;
+    }
+
+    for (const auto &mime : availableFormats) {
         // ignore uppercase mimetypes (e.g. UTF8_STRING, TARGETS, TIMESTAMP)
-        // and internal type to check clipboard owner
-        if ( !mime.isEmpty() && mime[0].isLower() )
-            formats.append(mime);
+        // and specific internal types
+        if ( mime.isEmpty() || !mime[0].isLower() || ignoredFormats.contains(mime) )
+            continue;
+
+        // ignore redundant image formats
+        if ( skipBinaryImages && isBinaryImageFormat(mime) )
+            continue;
+
+        formats.append(mime);
     }
 
     if ( !formats.contains(mimeText) ) {
-        const QString textPrefix(QLatin1String(mimeText) + ";");
-        bool containsText = false;
-        for (int i = formats.size() - 1; i >= 0; --i) {
-            if ( formats[i].startsWith(textPrefix) ) {
-                formats.removeAt(i);
-                containsText = true;
+        const QString textPrefix(mimeText + QStringLiteral(";"));
+        const auto first = std::remove_if(
+            std::begin(formats), std::end(formats), [&](const QString &format){
+                return format.startsWith(textPrefix);
             }
-        }
-        if (containsText)
+        );
+        if (first != std::end(formats)) {
+            formats.erase(first, std::end(formats));
             formats.append(mimeText);
+        }
     }
 
     return cloneData(data, formats);
@@ -442,26 +272,36 @@ QVariantMap cloneData(const QMimeData &data)
 
 QMimeData* createMimeData(const QVariantMap &data)
 {
-    QStringList copyFormats = data.keys();
-    copyFormats.removeOne(mimeClipboardMode);
-
     std::unique_ptr<QMimeData> newClipboardData(new MimeData);
 
-    for ( const auto &format : copyFormats )
-        newClipboardData->setData( format, data[format].toByteArray() );
+    bool hasImage =
+        setImageData(data, QStringLiteral("image/png"), "png", newClipboardData)
+        || setImageData(data, QStringLiteral("image/bmp"), "bmp", newClipboardData)
+        || setImageData(data, QStringLiteral("application/x-qt-image"), nullptr, newClipboardData)
+    ;
 
-    if ( !copyFormats.contains(mimeOwner) ) {
+    for (auto it = data.constBegin(); it != data.constEnd(); ++it) {
+        if ( it.key() == mimeClipboardMode )
+            continue;
+
+        QByteArray bytes = it.value().toByteArray();
+
+        newClipboardData->setData( it.key(), bytes );
+
+        if (!hasImage) {
+            const QString imageFormat = getImageFormatFromMime(it.key());
+            if ( !imageFormat.isEmpty()
+                && setImageData(bytes, imageFormat.toUtf8().constData(), newClipboardData) )
+            {
+                hasImage = true;
+            }
+        }
+    }
+
+    if ( !data.contains(mimeOwner) ) {
         const auto owner = makeClipboardOwnerData();
         if ( !owner.isEmpty() )
             newClipboardData->setData( mimeOwner, owner );
-    }
-
-    // Set image data.
-    const QStringList formats =
-            QStringList() << "image/png" << "image/bmp" << "application/x-qt-image" << data.keys();
-    for (const auto &imageFormat : formats) {
-        if ( setImageData(data, imageFormat, newClipboardData.get()) )
-            break;
     }
 
     return newClipboardData.release();
@@ -514,11 +354,7 @@ QString elideText(const QString &text, const QFont &font, const QString &format,
     lines = lines.mid(firstLine, lastLine - firstLine + 1);
 
     QFontMetrics fm(font);
-#if QT_VERSION >= QT_VERSION_CHECK(5,11,0)
     const int formatWidth = format.isEmpty() ? 0 : fm.horizontalAdvance(format.arg(QString()));
-#else
-    const int formatWidth = format.isEmpty() ? 0 : fm.width(format.arg(QString()));
-#endif
 
     // Remove redundant spaces from single line text.
     if (lines.size() == 1) {
@@ -561,7 +397,7 @@ QString textLabelForData(const QVariantMap &data, const QFont &font, const QStri
 
     const QString notes = data.value(mimeItemNotes).toString();
 
-    if ( data.contains(mimeHidden) ) {
+    if ( data.contains(mimeHidden) || data.contains(mimeSecret) ) {
         label = QObject::tr("<HIDDEN>", "Label for hidden/secret clipboard content");
     } else if ( data.contains(mimeText) || data.contains(mimeUriList) ) {
         const QString text = getTextData(data);
@@ -613,16 +449,6 @@ void renameToUnique(QString *name, const QStringList &names)
 
 QString dataToText(const QByteArray &bytes, const QString &mime)
 {
-#if QT_VERSION < QT_VERSION_CHECK(6,0,0)
-    auto codec = (mime == mimeHtml)
-            ? QTextCodec::codecForHtml(bytes, nullptr)
-            : QTextCodec::codecForUtfText(bytes, nullptr);
-
-    if (!codec)
-        codec = encodingForText(bytes);
-
-    return codec->toUnicode(bytes);
-#else
     auto encoding = (mime == mimeHtml)
             ? QStringConverter::encodingForHtml(bytes)
             : QStringConverter::encodingForData(bytes);
@@ -631,64 +457,11 @@ QString dataToText(const QByteArray &bytes, const QString &mime)
         encoding = encodingForText(bytes);
 
     return QStringDecoder(*encoding).decode(bytes);
-#endif
 }
 
 bool isClipboardData(const QVariantMap &data)
 {
     return data.value(mimeClipboardMode).toByteArray().isEmpty();
-}
-
-bool handleViKey(QKeyEvent *event, QObject *eventReceiver)
-{
-    int key = event->key();
-    Qt::KeyboardModifiers mods = event->modifiers();
-
-    switch ( key ) {
-    case Qt::Key_G:
-        key = mods & Qt::ShiftModifier ? Qt::Key_End : Qt::Key_Home;
-        mods = mods & ~Qt::ShiftModifier;
-        break;
-    case Qt::Key_J:
-        key = Qt::Key_Down;
-        break;
-    case Qt::Key_K:
-        key = Qt::Key_Up;
-        break;
-    case Qt::Key_L:
-        key = Qt::Key_Return;
-        break;
-    case Qt::Key_F:
-    case Qt::Key_D:
-    case Qt::Key_B:
-    case Qt::Key_U:
-        if (mods & Qt::ControlModifier) {
-            key = (key == Qt::Key_F || key == Qt::Key_D) ? Qt::Key_PageDown : Qt::Key_PageUp;
-            mods = mods & ~Qt::ControlModifier;
-        } else {
-            return false;
-        }
-        break;
-    case Qt::Key_X:
-        key = Qt::Key_Delete;
-        break;
-    case Qt::Key_BracketLeft:
-        if (mods & Qt::ControlModifier) {
-            key = Qt::Key_Escape;
-            mods = mods & ~Qt::ControlModifier;
-        } else {
-            return false;
-        }
-        break;
-    default:
-        return false;
-    }
-
-    QKeyEvent event2(QEvent::KeyPress, key, mods, event->text());
-    QCoreApplication::sendEvent(eventReceiver, &event2);
-    event->accept();
-
-    return true;
 }
 
 bool canDropToTab(const QDropEvent &event)
@@ -702,12 +475,7 @@ void acceptDrag(QDropEvent *event)
     // Default drop action in item list and tab bar/tree should be "move."
     if ( event->possibleActions().testFlag(Qt::MoveAction)
          && event->mimeData()->hasFormat(mimeOwner)
-#if QT_VERSION < QT_VERSION_CHECK(5,12,0)
-         // WORKAROUND: Test currently pressed modifiers instead of the ones in event (QTBUG-57168).
-         && !QApplication::queryKeyboardModifiers().testFlag(Qt::ControlModifier)
-#else
-         && !event->keyboardModifiers().testFlag(Qt::ControlModifier)
-#endif
+         && !event->modifiers().testFlag(Qt::ControlModifier)
         )
     {
         event->setDropAction(Qt::MoveAction);
@@ -731,4 +499,15 @@ QString cloneText(const QMimeData &data)
 {
     const auto text = dataToText( data.data(mimeText), mimeText );
     return text.isEmpty() ? data.text() : text;
+}
+
+QString formatDataSize(qint64 bytes)
+{
+    if (bytes < 1024)
+        return QStringLiteral("%1 B").arg(bytes);
+    if (bytes < 1024 * 1024)
+        return QStringLiteral("%1 KiB").arg(bytes / 1024.0, 0, 'f', 1);
+    if (bytes < 1024 * 1024 * 1024)
+        return QStringLiteral("%1 MiB").arg(bytes / (1024.0 * 1024.0), 0, 'f', 1);
+    return QStringLiteral("%1 GiB").arg(bytes / (1024.0 * 1024.0 * 1024.0), 0, 'f', 1);
 }

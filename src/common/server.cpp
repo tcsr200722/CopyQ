@@ -1,21 +1,4 @@
-/*
-    Copyright (c) 2020, Lukas Holecek <hluk@email.cz>
-
-    This file is part of CopyQ.
-
-    CopyQ is free software: you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation, either version 3 of the License, or
-    (at your option) any later version.
-
-    CopyQ is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
-
-    You should have received a copy of the GNU General Public License
-    along with CopyQ.  If not, see <http://www.gnu.org/licenses/>.
-*/
+// SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "server.h"
 
@@ -29,6 +12,7 @@
 #include <QEventLoop>
 #include <QLocalServer>
 #include <QLocalSocket>
+#include <QLockFile>
 
 namespace {
 
@@ -41,38 +25,43 @@ bool serverIsRunning(const QString &serverName)
 
 QString lockFilePath()
 {
-    const QString lockFilePath = getConfigurationFilePath(".lock");
+    const QString lockFilePath = configurationFilePath(".lock");
 
     // Ensure parent dir exists.
     const QString path = QDir::cleanPath( lockFilePath + QLatin1String("/..") );
     QDir dir(path);
-    dir.mkpath(".");
+    dir.mkpath(QStringLiteral("."));
 
     return lockFilePath;
 }
 
 } // namespace
 
+struct Server::PrivateData {
+    QLocalServer server;
+    QLockFile lockFile{lockFilePath()};
+    int socketCount = 0;
+    QEventLoop *loop = nullptr;
+};
+
 Server::Server(const QString &name, QObject *parent)
     : QObject(parent)
-    , m_server(new QLocalServer)
-    , m_lockFile(lockFilePath())
-    , m_socketCount(0)
+    , m_data(new PrivateData)
 {
-    if ( m_lockFile.tryLock() && !serverIsRunning(name) ) {
+    if ( m_data->lockFile.tryLock() && !serverIsRunning(name) ) {
         QLocalServer::removeServer(name);
-        if ( !m_server->listen(name) ) {
-            log( QString("Failed to create server \"%1\": %2")
-                 .arg(m_server->fullServerName(), m_server->errorString()),
+        if ( !m_data->server.listen(name) ) {
+            log( QStringLiteral("Failed to create server \"%1\": %2")
+                 .arg(name, m_data->server.errorString()),
                  LogError);
         }
-    } else if (m_lockFile.error() == QLockFile::LockFailedError) {
+    } else if (m_data->lockFile.error() == QLockFile::LockFailedError) {
         COPYQ_LOG( QStringLiteral("Another process holds lock file: %1")
                    .arg(lockFilePath()) );
-    } else if (m_lockFile.error() == QLockFile::PermissionError) {
+    } else if (m_data->lockFile.error() == QLockFile::PermissionError) {
         log( QStringLiteral("Insufficient permissions to create lock file: %1")
              .arg(lockFilePath()), LogError );
-    } else if (m_lockFile.error() == QLockFile::UnknownError) {
+    } else if (m_data->lockFile.error() == QLockFile::UnknownError) {
         log( QStringLiteral("Failed to lock file: %1")
              .arg(lockFilePath()), LogError );
     }
@@ -81,49 +70,49 @@ Server::Server(const QString &name, QObject *parent)
 Server::~Server()
 {
     // Postpone destroying server, otherwise it crashes when re-creating server.
-    m_server->deleteLater();
+    m_data->server.deleteLater();
 }
 
 void Server::start()
 {
-    connect( m_server, &QLocalServer::newConnection,
+    connect( &m_data->server, &QLocalServer::newConnection,
              this, &Server::onNewConnection );
 
-    while (m_server->hasPendingConnections())
+    while (m_data->server.hasPendingConnections())
         onNewConnection();
 }
 
 bool Server::isListening() const
 {
-    return m_server->isListening();
+    return m_data->server.isListening();
 }
 
 void Server::close()
 {
-    m_server->close();
+    m_data->server.close();
 
-    if (m_socketCount > 0) {
-        COPYQ_LOG( QString("Waiting for %1 sockets to disconnect").arg(m_socketCount) );
+    if (m_data->socketCount > 0) {
+        COPYQ_LOG( QStringLiteral("Waiting for %1 sockets to disconnect").arg(m_data->socketCount) );
 
         QEventLoop loop;
-        m_loop = &loop;
+        m_data->loop = &loop;
         loop.exec(QEventLoop::ExcludeUserInputEvents);
-        m_loop = nullptr;
+        m_data->loop = nullptr;
     }
 
-    m_lockFile.unlock();
+    m_data->lockFile.unlock();
 }
 
 void Server::onNewConnection()
 {
-    QLocalSocket* socket = m_server->nextPendingConnection();
+    QLocalSocket* socket = m_data->server.nextPendingConnection();
     if (!socket) {
         log("No pending client connections!", LogError);
     } else if ( socket->state() != QLocalSocket::ConnectedState ) {
         log("Client is not connected!", LogError);
         socket->deleteLater();
     } else {
-        ++m_socketCount;
+        ++m_data->socketCount;
         connect( socket, &QLocalSocket::disconnected,
                  this, &Server::onSocketDestroyed );
 
@@ -134,8 +123,8 @@ void Server::onNewConnection()
 
 void Server::onSocketDestroyed()
 {
-    Q_ASSERT(m_socketCount > 0);
-    --m_socketCount;
-    if (m_loop)
-        m_loop->quit();
+    Q_ASSERT(m_data->socketCount > 0);
+    --m_data->socketCount;
+    if (m_data->loop)
+        m_data->loop->quit();
 }

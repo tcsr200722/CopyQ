@@ -1,4 +1,3 @@
-#ifndef QXTGLOBALSHORTCUT_P_H
 /****************************************************************************
 ** Copyright (c) 2006 - 2011, the LibQxt project.
 ** See the Qxt AUTHORS file for a list of authors and copyright holders.
@@ -28,8 +27,7 @@
 **
 ** <http://libqxt.org>  <foundation@libqxt.org>
 *****************************************************************************/
-
-#define QXTGLOBALSHORTCUT_P_H
+#pragma once
 
 #include <QAbstractEventDispatcher>
 #include <QHash>
@@ -39,11 +37,7 @@ class QxtGlobalShortcut;
 
 #include <QAbstractNativeEventFilter>
 
-#if QT_VERSION >= QT_VERSION_CHECK(6,0,0)
 using NativeEventResult = qintptr;
-#else
-using NativeEventResult = long;
-#endif
 
 class QxtGlobalShortcutPrivate
     : public QAbstractNativeEventFilter
@@ -58,13 +52,12 @@ public:
     quint32 nativeKey;
     quint32 nativeMods;
     bool registered;
+    QString name;
 
+    void init();
+    void destroy();
     bool setShortcut(const QKeySequence& shortcut);
     bool unsetShortcut();
-
-#   ifndef Q_OS_MAC
-    static int ref;
-#   endif // Q_OS_MAC
 
     bool nativeEventFilter(
         const QByteArray &eventType, void *message, NativeEventResult *result) override;
@@ -72,6 +65,12 @@ public:
     static void activateShortcut(quint32 nativeKey, quint32 nativeMods);
 
 private:
+    void initFallback();
+    void destroyFallback();
+    void setKeySequence(const QKeySequence& shortcut);
+    bool setShortcutFallback(const QKeySequence& shortcut);
+    bool unsetShortcutFallback();
+
     QxtGlobalShortcut *q_ptr;
 
     static quint32 nativeKeycode(Qt::Key keycode, Qt::KeyboardModifiers mods);
@@ -79,8 +78,4 @@ private:
 
     static bool registerShortcut(quint32 nativeKey, quint32 nativeMods);
     static bool unregisterShortcut(quint32 nativeKey, quint32 nativeMods);
-
-    static QHash<QPair<quint32, quint32>, QxtGlobalShortcut*> shortcuts;
 };
-
-#endif // QXTGLOBALSHORTCUT_P_H

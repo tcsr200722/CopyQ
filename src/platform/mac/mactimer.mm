@@ -1,33 +1,14 @@
-/*
-    Copyright (c) 2020, Lukas Holecek <hluk@email.cz>
-
-    This file is part of CopyQ.
-
-    CopyQ is free software: you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation, either version 3 of the License, or
-    (at your option) any later version.
-
-    CopyQ is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
-
-    You should have received a copy of the GNU General Public License
-    along with CopyQ.  If not, see <http://www.gnu.org/licenses/>.
-*/
+// SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "mactimer.h"
 
-#include <Cocoa/Cocoa.h>
 #include <QPointer>
 
 MacTimer::MacTimer(QObject *parent) :
     QObject(parent),
     m_interval(0),
     m_tolerance(0),
-    m_singleShot(false),
-    m_nsTimer(0)
+    m_singleShot(false)
 {
 }
 
@@ -38,15 +19,15 @@ MacTimer::~MacTimer()
 
 void MacTimer::stop()
 {
-    if (m_nsTimer) {
-        CFRunLoopTimerInvalidate((CFRunLoopTimerRef) m_nsTimer);
+    if (m_cfTimer) {
+        CFRunLoopTimerInvalidate(m_cfTimer);
+        m_cfTimer = nullptr;
     }
-    m_nsTimer = 0;
 }
 
 void MacTimer::restart()
 {
-    if (m_nsTimer) {
+    if (m_cfTimer) {
         stop();
         start();
     }
@@ -82,10 +63,10 @@ void MacTimer::start() {
     // Use QPointer to make it auto-null, and use a 'weak reference' in the
     // block
     QPointer<MacTimer> weakThis(this);
-    double intervalSeconds = (float)m_interval / 1000.0;
+    double intervalSeconds = (double)m_interval / 1000.0;
 
     // Create a timer which kicks into a block
-    CFRunLoopTimerRef timer = CFRunLoopTimerCreateWithHandler(NULL,
+    CFRunLoopTimerRef timer = CFRunLoopTimerCreateWithHandler(nullptr,
         CFAbsoluteTimeGetCurrent() + intervalSeconds,
         m_singleShot ? 0 : intervalSeconds,
         0, 0, // These are both ignored
@@ -96,12 +77,15 @@ void MacTimer::start() {
         }
     );
 
-    // Set the tolerance using an NSTimer as there is no CF way of doing so
-    if ([m_nsTimer respondsToSelector:@selector(setTolerance:)]) {
-        double toleranceSeconds = (double)m_tolerance / 1000.0;
-        [m_nsTimer setTolerance:toleranceSeconds];
-    }
+    if (!timer)
+        return;
 
-    // add timer to the hidden run loop
+    // Set tolerance so macOS can coalesce timer firings for power efficiency.
+    double toleranceSeconds = (double)m_tolerance / 1000.0;
+    CFRunLoopTimerSetTolerance(timer, toleranceSeconds);
+
+    // Add timer to the current run loop. The run loop retains its own
+    // reference; CFRef adopts the Create-rule +1 for stop()/invalidate.
     CFRunLoopAddTimer(CFRunLoopGetCurrent(), timer, kCFRunLoopDefaultMode);
+    m_cfTimer = timer;
 }

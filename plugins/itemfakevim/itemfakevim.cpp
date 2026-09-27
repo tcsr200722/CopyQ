@@ -1,27 +1,7 @@
-/*
-    Copyright (c) 2020, Lukas Holecek <hluk@email.cz>
-
-    This file is part of CopyQ.
-
-    CopyQ is free software: you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation, either version 3 of the License, or
-    (at your option) any later version.
-
-    CopyQ is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
-
-    You should have received a copy of the GNU General Public License
-    along with CopyQ.  If not, see <http://www.gnu.org/licenses/>.
-*/
+// SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "itemfakevim.h"
 #include "ui_itemfakevimsettings.h"
-
-#include "tests/itemfakevimtests.h"
-#include "common/contenttype.h"
 
 #include "fakevim/fakevimhandler.h"
 
@@ -34,6 +14,8 @@ using namespace FakeVim::Internal;
 #include <QMessageBox>
 #include <QMetaMethod>
 #include <QKeyEvent>
+#include <QInputMethodEvent>
+#include <QProcess>
 #include <QPaintEvent>
 #include <QPainter>
 #include <QRegularExpression>
@@ -47,6 +29,7 @@ using namespace FakeVim::Internal;
 #include <QSettings>
 #include <QStyle>
 #include <QStyleHints>
+#include <QVariantMap>
 #include <QtPlugin>
 
 #define EDITOR(s) (m_textEdit ? m_textEdit->s : m_plainTextEdit->s)
@@ -55,8 +38,8 @@ namespace {
 
 const char propertyWrapped[] = "CopyQ_fakevim_wrapped";
 
-QLatin1String configReallyEnabled("really_enable");
-QLatin1String configSourceFile("source_file");
+const QLatin1String configReallyEnabled("really_enable");
+const QLatin1String configSourceFile("source_file");
 
 // The same method for rendering document doesn't work for QPlainTextEdit.
 // This is simplified code from Qt source code.
@@ -155,6 +138,7 @@ public:
 
         setLineWrappingEnabled(true);
 
+        editor->installEventFilter(this);
         editor->viewport()->installEventFilter(this);
 
         auto completer = editor->findChild<QObject*>("CommandCompleter");
@@ -218,12 +202,25 @@ public:
             return false;
         }
 
-        if ( ev->type() != QEvent::Paint )
+        // Handle input method events for the editor widget: convert
+        // committed text to FakeVim key input so it goes through proper
+        // undo grouping.  Preedit-only updates (empty commit) are consumed
+        // since FakeVim has no preedit rendering.  IM queries are left
+        // unblocked so the platform can show the virtual keyboard.
+        if (ev->type() == QEvent::InputMethod) {
+            auto *ime = static_cast<QInputMethodEvent *>(ev);
+            const QString commit = ime->commitString();
+            if (!commit.isEmpty())
+                m_handler->handleInput(commit);
+            return true;
+        }
+
+        if ( ev->type() != QEvent::Paint || obj != editor()->viewport() )
             return false;
 
         QWidget *viewport = editor()->viewport();
 
-        QPaintEvent *e = static_cast<QPaintEvent*>(ev);
+        auto *e = static_cast<QPaintEvent*>(ev);
 
         const QRect r = e->rect();
 
@@ -430,7 +427,8 @@ private:
     QObject *m_completerPopup = nullptr;
     QRect m_cursorRect;
 
-    bool m_hasBlockSelection;
+    bool m_hasBlockSelection = false;
+
 
     using Selection = QAbstractTextDocumentLayout::Selection;
     using SelectionList = QVector<Selection>;
@@ -483,8 +481,6 @@ public:
     {
         const auto icon = m_statusBarIcon->style()->standardIcon(standardPixmap);
         const auto maxHeight = m_statusBarIcon->contentsRect().height();
-        const auto window = m_statusBarIcon->windowHandle();
-
         auto sizes = icon.availableSizes();
         std::sort(std::begin(sizes), std::end(sizes), [](const QSize &lhs, const QSize &rhs){
             return lhs.height() > rhs.height();
@@ -495,8 +491,8 @@ public:
             [](const QSize &size, int height){
                 return size.height() > height;
             });
-        const auto size = it == sizes.end() ? icon.actualSize(window, QSize(maxHeight, maxHeight)) : *it;
-        const auto pixmap = icon.pixmap(window, size);
+        const auto size = it == sizes.end() ? icon.actualSize(QSize(maxHeight, maxHeight)) : *it;
+        const auto pixmap = icon.pixmap(size);
         m_statusBarIcon->setPixmap(pixmap);
     }
 
@@ -675,43 +671,63 @@ private:
 void connectSignals(FakeVimHandler *handler, Proxy *proxy)
 {
     handler->commandBufferChanged
-            .connect([proxy](const QString &contents, int cursorPos, int anchorPos, int messageLevel) {
+            .set([proxy](const QString &contents, int cursorPos, int anchorPos, int messageLevel) {
             proxy->changeStatusMessage(contents, cursorPos, anchorPos, messageLevel);
         }
     );
-    handler->extraInformationChanged.connect(
+    handler->extraInformationChanged.set(
         [proxy](const QString &msg) {
             proxy->changeExtraInformation(msg);
         }
     );
-    handler->statusDataChanged.connect(
+    handler->statusDataChanged.set(
         [proxy](const QString &msg) {
             proxy->changeStatusData(msg);
         }
     );
-    handler->highlightMatches.connect(
+    handler->highlightMatches.set(
         [proxy](const QString &needle) {
             proxy->highlightMatches(needle);
         }
     );
-    handler->handleExCommandRequested.connect(
+    handler->handleExCommandRequested.set(
         [proxy](bool *handled, const ExCommand &cmd) {
             proxy->handleExCommand(handled, cmd);
         }
     );
-    handler->requestSetBlockSelection.connect(
+    handler->requestSetBlockSelection.set(
         [proxy](const QTextCursor &cursor) {
             proxy->requestSetBlockSelection(cursor);
         }
     );
-    handler->requestDisableBlockSelection.connect(
+    handler->requestDisableBlockSelection.set(
         [proxy]() {
             proxy->requestDisableBlockSelection();
         }
     );
-    handler->requestBlockSelection.connect(
+    handler->requestBlockSelection.set(
         [proxy](QTextCursor *cursor) {
             proxy->requestBlockSelection(cursor);
+        }
+    );
+    handler->tabPressedInInsertMode.set(
+        []() {
+            return true;
+        }
+    );
+    handler->processOutput.set(
+        [](const QString &command, const QString &input, QString *output) {
+            QProcess proc;
+            const QStringList arguments = QProcess::splitCommand(command);
+            if (arguments.isEmpty())
+                return;
+            const QString executable = arguments.first();
+            proc.start(executable, arguments.mid(1));
+            proc.waitForStarted();
+            proc.write(input.toLocal8Bit());
+            proc.closeWriteChannel();
+            proc.waitForFinished();
+            *output = QString::fromLocal8Bit(proc.readAllStandardOutput());
         }
     );
 }
@@ -723,7 +739,7 @@ bool installEditor(QAbstractScrollArea *textEdit, const QString &sourceFileName,
     // Position text cursor at the beginning of text instead of selecting all.
     wrapper->setTextCursor( QTextCursor(wrapper->document()) );
 
-    QStatusBar *statusBar = new QStatusBar(textEdit);
+    auto *statusBar = new QStatusBar(textEdit);
     statusBar->setObjectName("editor_status_bar");
 
     const auto layout = textEdit->parentWidget()->layout();
@@ -758,9 +774,7 @@ bool installEditor(QObject *obj, const QString &sourceFileName, ItemFakeVimLoade
 
 } // namespace
 
-ItemFakeVimLoader::ItemFakeVimLoader()
-{
-}
+ItemFakeVimLoader::ItemFakeVimLoader() = default;
 
 ItemFakeVimLoader::~ItemFakeVimLoader() = default;
 
@@ -771,7 +785,7 @@ QVariant ItemFakeVimLoader::icon() const
 
 void ItemFakeVimLoader::setEnabled(bool enabled)
 {
-    m_enabled = enabled;
+    ItemLoaderInterface::setEnabled(enabled);
     updateCurrentlyEnabledState();
 }
 
@@ -791,28 +805,13 @@ void ItemFakeVimLoader::loadSettings(const QSettings &settings)
 QWidget *ItemFakeVimLoader::createSettingsWidget(QWidget *parent)
 {
     ui.reset(new Ui::ItemFakeVimSettings);
-    QWidget *w = new QWidget(parent);
+    auto *w = new QWidget(parent);
     ui->setupUi(w);
 
     ui->checkBoxEnable->setChecked(m_reallyEnabled);
     ui->lineEditSourceFileName->setText(m_sourceFileName);
 
     return w;
-}
-
-QObject *ItemFakeVimLoader::tests(const TestInterfacePtr &test) const
-{
-#ifdef HAS_TESTS
-    QVariantMap settings;
-    settings["really_enable"] = true;
-    settings["source_file"] = QString(ItemFakeVimTests::fileNameToSource());
-    QObject *tests = new ItemFakeVimTests(test);
-    tests->setProperty("CopyQ_test_settings", settings);
-    return tests;
-#else
-    Q_UNUSED(test)
-    return nullptr;
-#endif
 }
 
 bool ItemFakeVimLoader::eventFilter(QObject *watched, QEvent *event)
@@ -828,7 +827,7 @@ void ItemFakeVimLoader::updateCurrentlyEnabledState()
     if ( qobject_cast<QGuiApplication*>(qApp) == nullptr )
         return;
 
-    const bool enable = m_enabled && m_reallyEnabled;
+    const bool enable = isEnabled() && m_reallyEnabled;
     if (m_currentlyEnabled == enable)
         return;
 

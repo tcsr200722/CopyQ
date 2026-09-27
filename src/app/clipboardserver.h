@@ -1,24 +1,7 @@
-/*
-    Copyright (c) 2020, Lukas Holecek <hluk@email.cz>
+// SPDX-License-Identifier: GPL-3.0-or-later
 
-    This file is part of CopyQ.
+#pragma once
 
-    CopyQ is free software: you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation, either version 3 of the License, or
-    (at your option) any later version.
-
-    CopyQ is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
-
-    You should have received a copy of the GNU General Public License
-    along with CopyQ.  If not, see <http://www.gnu.org/licenses/>.
-*/
-
-#ifndef CLIPBOARDSERVER_H
-#define CLIPBOARDSERVER_H
 
 #include "app.h"
 #include "common/clipboardmode.h"
@@ -27,6 +10,7 @@
 #include "common/clientsocket.h"
 #include "gui/clipboardbrowsershared.h"
 
+#include <QSet>
 #include <QMap>
 #include <QPointer>
 #include <QTimer>
@@ -54,10 +38,13 @@ struct NotificationButton;
 class ClipboardServer final : public QObject, public App
 {
     Q_OBJECT
+    Q_PROPERTY(QStringList copyqStats READ copyqStats CONSTANT)
 
 public:
     ClipboardServer(QApplication *app, const QString &sessionName);
     ~ClipboardServer();
+
+    QStringList copyqStats() const;
 
     /** Stop monitor application. */
     void stopMonitoring();
@@ -86,6 +73,7 @@ private:
     void onClientMessageReceived(const QByteArray &message, int messageCode, ClientSocketId clientId);
     void onClientDisconnected(ClientSocketId clientId);
     void onClientConnectionFailed(ClientSocketId clientId);
+    void onClipboardProviderRegistered(ClientSocketId clientId, ClipboardMode mode);
 
     /** An error occurred on monitor connection. */
     void onMonitorFinished();
@@ -134,6 +122,11 @@ private:
     ClientSocketPtr findClient(int actionId);
 
     void sendActionData(int actionId, const QByteArray &bytes);
+    void stopAction(int actionId);
+
+    void cleanDataFiles();
+
+    void setPreventScreenCapture(bool prevent);
 
     Server *m_server = nullptr;
     MainWindow* m_wnd = nullptr;
@@ -147,11 +140,15 @@ private:
     uint m_monitorCommandsStateHash = 0;
     int m_textTabSize = 8;
     bool m_saveOnDeactivate = true;
+    bool m_preventScreenCapture = false;
+    bool m_loadingSettings = false;
 
     ClipboardBrowserSharedPtr m_sharedData;
 
     QMap<int, QByteArray> m_actionDataToSend;
     QTimer m_timerClearUnsentActionData;
+    QSet<int> m_pendingStopActionIds;
+    QTimer m_timerCleanItemFiles;
 
     struct ClientData {
         ClientData() = default;
@@ -170,6 +167,13 @@ private:
         ScriptableProxy *proxy = nullptr;
     };
     QMap<ClientSocketId, ClientData> m_clients;
-};
+    ClientSocketId m_provideClipboardClientId = 0;
+    ClientSocketId m_provideSelectionClientId = 0;
 
-#endif // CLIPBOARDSERVER_H
+    struct ClientMessage {
+        QByteArray message;
+        int messageCode;
+        ClientSocketId clientId;
+    };
+    QList<ClientMessage> m_pendingMessages;
+};

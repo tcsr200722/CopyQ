@@ -1,41 +1,26 @@
-/*
-    Copyright (c) 2020, Lukas Holecek <hluk@email.cz>
+// SPDX-License-Identifier: GPL-3.0-or-later
 
-    This file is part of CopyQ.
+#pragma once
 
-    CopyQ is free software: you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation, either version 3 of the License, or
-    (at your option) any later version.
-
-    CopyQ is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
-
-    You should have received a copy of the GNU General Public License
-    along with CopyQ.  If not, see <http://www.gnu.org/licenses/>.
-*/
-
-#ifndef FILEWATCHER_H
-#define FILEWATCHER_H
 
 #include "common/mimetypes.h"
 
+#include <QDir>
+#include <QLockFile>
 #include <QObject>
 #include <QPersistentModelIndex>
+#include <QSet>
 #include <QStringList>
 #include <QTimer>
 #include <QVector>
 
 class QAbstractItemModel;
-class QDir;
 
 struct Ext;
 struct BaseNameExtensions;
 
 #define COPYQ_MIME_PREFIX_ITEMSYNC COPYQ_MIME_PREFIX "itemsync-"
-#define COPYQ_MIME_PREFIX_ITEMSYNC_PRIVATE COPYQ_MIME_PREFIX "itemsync-private-"
+#define COPYQ_MIME_PREFIX_ITEMSYNC_PRIVATE COPYQ_MIME_PRIVATE_PREFIX "itemsync-"
 extern const QLatin1String mimeExtensionMap;
 extern const QLatin1String mimeBaseName;
 extern const QLatin1String mimeNoSave;
@@ -43,9 +28,14 @@ extern const QLatin1String mimeSyncPath;
 extern const QLatin1String mimeNoFormat;
 extern const QLatin1String mimeUnknownFormats;
 
-extern const QLatin1String mimePrivatePrefix;
+extern const QLatin1String mimePrivateSyncPrefix;
 extern const QLatin1String mimeOldBaseName;
 extern const QLatin1String mimeHashPrefix;
+
+enum class UpdateType {
+    Inserted,
+    Changed,
+};
 
 struct FileFormat {
     bool isValid() const { return !extensions.isEmpty(); }
@@ -58,6 +48,11 @@ using BaseNameExtensionsList = QList<BaseNameExtensions>;
 
 using Hash = QByteArray;
 
+class SyncDataFile;
+QDataStream &operator<<(QDataStream &out, SyncDataFile value);
+QDataStream &operator>>(QDataStream &in, SyncDataFile &value);
+void registerSyncDataFileConverter();
+
 class FileWatcher final : public QObject {
 public:
     static QString getBaseName(const QModelIndex &index);
@@ -69,14 +64,23 @@ public:
      */
     static bool isOwnBaseName(const QString &baseName);
 
-    static void removeFilesForRemovedIndex(const QString &tabPath, const QModelIndex &index);
+    static void removeFilesForRemovedIndexes(
+        const QString &tabPath, const QList<QPersistentModelIndex> &indexes,
+        bool ownOnly = false);
 
     static Hash calculateHash(const QByteArray &bytes);
 
-    FileWatcher(const QString &path, const QStringList &paths, QAbstractItemModel *model,
-                int maxItems, const QList<FileFormat> &formatSettings, QObject *parent = nullptr);
+    FileWatcher(
+        const QString &path,
+        const QStringList &paths,
+        QAbstractItemModel *model,
+        int maxItems,
+        const QList<FileFormat> &formatSettings,
+        int itemDataThreshold,
+        QObject *parent = nullptr
+    );
 
-    const QString &path() const { return m_path; }
+    QString path() const { return m_dir.absolutePath(); }
 
     bool isValid() const { return m_valid; }
 
@@ -105,6 +109,8 @@ private:
 
     void onRowsRemoved(const QModelIndex &, int first, int last);
 
+    void onRowsMoved(const QModelIndex &, int start, int end, const QModelIndex &, int destinationRow);
+
     QString oldBaseName(const QModelIndex &index) const;
 
     void createItems(const QVector<QVariantMap> &dataMaps, int targetRow);
@@ -113,21 +119,26 @@ private:
 
     QList<QPersistentModelIndex> indexList(int first, int last);
 
-    void saveItems(int first, int last);
+    void saveItems(int first, int last, UpdateType updateType);
 
-    bool renameMoveCopy(const QDir &dir, const QList<QPersistentModelIndex> &indexList);
+    bool renameMoveCopy(
+        const QDir &dir, const QList<QPersistentModelIndex> &indexList, UpdateType updateType);
 
     void updateDataAndWatchFile(
             const QDir &dir, const BaseNameExtensions &baseNameWithExts,
             QVariantMap *dataMap, QVariantMap *mimeToExtension);
 
-    bool copyFilesFromUriList(const QByteArray &uriData, int targetRow, const QStringList &baseNames);
+    bool copyFilesFromUriList(const QByteArray &uriData, int targetRow, const QSet<QString> &baseNames);
+
+    void updateMovedRows();
 
     QAbstractItemModel *m_model;
     QTimer m_updateTimer;
+    QTimer m_moveTimer;
+    int m_moveEnd = -1;
     int m_interval = 0;
     const QList<FileFormat> &m_formatSettings;
-    QString m_path;
+    QDir m_dir;
     bool m_valid;
     int m_maxItems;
     bool m_updatesEnabled = false;
@@ -136,6 +147,7 @@ private:
     QList<QPersistentModelIndex> m_batchIndexData;
     BaseNameExtensionsList m_fileList;
     int m_lastBatchIndex = -1;
-};
+    int m_itemDataThreshold = -1;
 
-#endif // FILEWATCHER_H
+    QLockFile m_lock;
+};

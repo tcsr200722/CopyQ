@@ -30,7 +30,6 @@
 #include "filterlineedit.h"
 
 #include "common/appconfig.h"
-#include "common/compatibility.h"
 #include "common/config.h"
 #include "common/contenttype.h"
 #include "common/regexp.h"
@@ -52,6 +51,9 @@
 
 namespace {
 
+// Refuse to highlight larger documents - it could be slow
+constexpr int highlightMaxCharacters = 100'000;
+
 const QLatin1String optionFilterHistory("filter_history");
 
 class BaseItemFilter : public ItemFilter {
@@ -68,18 +70,21 @@ public:
 
     void highlight(QTextEdit *edit, const QTextCharFormat &format) const override
     {
-        QList<QTextEdit::ExtraSelection> selections = this->selections(edit->document(), format);
+        QTextDocument *doc = edit->document();
+        if ( doc->characterCount() > highlightMaxCharacters )
+            return;
+
+        QList<QTextEdit::ExtraSelection> selections = this->selections(doc, format);
 
         // If there are no matches, try to match document without accents/diacritics.
         if (selections.isEmpty()) {
-            QTextDocument doc;
-            const auto text = edit->document()->toPlainText();
-            doc.setPlainText(accentsRemoved(text));
-            selections = this->selections(&doc, format);
+            QTextDocument tmpDoc;
+            tmpDoc.setPlainText(accentsRemoved(doc->toPlainText()));
+            selections = this->selections(&tmpDoc, format);
             for (QTextEdit::ExtraSelection &selection : selections) {
                 const auto pos = selection.cursor.position();
                 const auto anchor = selection.cursor.anchor();
-                selection.cursor = QTextCursor(edit->document());
+                selection.cursor = QTextCursor(doc);
                 selection.cursor.setPosition(pos);
                 selection.cursor.setPosition(anchor, QTextCursor::KeepAnchor);
             }
@@ -194,7 +199,7 @@ class ItemFilterFixedStrings final : public BaseItemFilter {
 public:
     ItemFilterFixedStrings(const QString &searchString, Qt::CaseSensitivity caseSensitivity)
         : BaseItemFilter(searchString)
-        , m_needles( searchString.split(QRegularExpression("\\s+"), SKIP_EMPTY_PARTS) )
+        , m_needles( searchString.split(QRegularExpression("\\s+"), Qt::SkipEmptyParts) )
         , m_caseSensitivity(caseSensitivity)
     {
     }
@@ -306,7 +311,7 @@ private:
 class FilterHistory final {
 public:
     FilterHistory()
-        : m_settings( getConfigurationFilePath("-filter.ini"), QSettings::IniFormat )
+        : m_settings( stateFilePath("-filter.ini"), QSettings::IniFormat )
     {
     }
 
@@ -405,15 +410,10 @@ void FilterLineEdit::loadSettings()
     const bool filterCaseSensitive = appConfig.option<Config::filter_case_insensitive>();
     m_actionCaseInsensitive->setChecked(filterCaseSensitive);
 
-    // KDE has custom icons for this. Notice that icon namings are counter intuitive.
-    // If these icons are not available we use the freedesktop standard name before
-    // falling back to a bundled resource.
-    QIcon icon1 = QIcon::fromTheme(layoutDirection() == Qt::LeftToRight ?
-                     "edit-clear-locationbar-rtl" : "edit-clear-locationbar-ltr",
-                     getIcon("edit-clear", IconTimes));
+    const QIcon icon1 = getIcon("edit-clear", IconXmark);
     setButtonIcon(Right, icon1);
 
-    QIcon icon2 = getIcon("edit-find", IconSearch);
+    const QIcon icon2 = getIcon("edit-find", IconMagnifyingGlass);
     setButtonIcon(Left, icon2);
 
     if ( appConfig.option<Config::save_filter_history>() ) {
@@ -430,9 +430,15 @@ void FilterLineEdit::loadSettings()
 
 void FilterLineEdit::keyPressEvent(QKeyEvent *ke)
 {
-    // Up/Down arrow keys should be passed to item list
+    // Up/Down arrow keys should be passed to the item list
     // (on OS X this moves text cursor to the beginning/end).
     if (ke->key() == Qt::Key_Down || ke->key() == Qt::Key_Up) {
+        ke->ignore();
+        return;
+    }
+
+    // If no text is selected, pass copy actions to the item list.
+    if ( selectionLength() == 0 && ke->matches(QKeySequence::Copy) ) {
         ke->ignore();
         return;
     }

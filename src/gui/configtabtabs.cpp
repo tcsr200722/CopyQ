@@ -1,21 +1,4 @@
-/*
-    Copyright (c) 2020, Lukas Holecek <hluk@email.cz>
-
-    This file is part of CopyQ.
-
-    CopyQ is free software: you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation, either version 3 of the License, or
-    (at your option) any later version.
-
-    CopyQ is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
-
-    You should have received a copy of the GNU General Public License
-    along with CopyQ.  If not, see <http://www.gnu.org/licenses/>.
-*/
+// SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "configtabtabs.h"
 
@@ -55,17 +38,20 @@ private:
         widget->setIconName(m_tabProperties.iconName);
         widget->setMaxItemCount(m_tabProperties.maxItemCount);
         widget->setStoreItems(m_tabProperties.storeItems);
+        widget->setEncryptedExpireSeconds(m_tabProperties.encryptedExpireSeconds);
 
         QObject::connect( widget, &TabPropertiesWidget::iconNameChanged,
-                          [&](const QString &icon) { m_tabProperties.iconName = icon; } );
+                          [this](const QString &icon) { m_tabProperties.iconName = icon; } );
         QObject::connect( widget, &TabPropertiesWidget::maxItemCountChanged,
-                          [&](int count) { m_tabProperties.maxItemCount = count; } );
+                          [this](int count) { m_tabProperties.maxItemCount = count; } );
         QObject::connect( widget, &TabPropertiesWidget::storeItemsChanged,
-                          [&](bool store) { m_tabProperties.storeItems = store; } );
+                          [this](bool store) { m_tabProperties.storeItems = store; } );
+        QObject::connect( widget, &TabPropertiesWidget::encryptedExpireSecondsChanged,
+                          [this](int seconds) { m_tabProperties.encryptedExpireSeconds = seconds; } );
 
         QObject::connect(
             widget, &TabPropertiesWidget::iconNameChanged,
-            m_parentList, [&] (const QString &iconName) {
+            m_parentList, [this] (const QString &iconName) {
                 const auto row = m_parentList->currentRow();
                 const auto icon = iconName.isEmpty() ? QIcon() : iconFromFile(iconName);
                 m_parentList->setItemIcon(row, icon);
@@ -93,7 +79,7 @@ ConfigTabTabs::ConfigTabTabs(QWidget *parent)
 
     const Tabs tabs;
     for (const auto &name : AppConfig().option<Config::tabs>()) {
-        const auto icon = getIconForTabName(name);
+        const auto icon = getIconForTabName(name, tabs);
         ItemOrderList::ItemPtr item(new TabItem(tabs.tabProperties(name), m_list));
         m_list->appendItem(name, icon, item);
     }

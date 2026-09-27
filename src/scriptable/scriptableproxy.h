@@ -1,29 +1,14 @@
-/*
-    Copyright (c) 2020, Lukas Holecek <hluk@email.cz>
+// SPDX-License-Identifier: GPL-3.0-or-later
 
-    This file is part of CopyQ.
+#pragma once
 
-    CopyQ is free software: you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation, either version 3 of the License, or
-    (at your option) any later version.
-
-    CopyQ is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
-
-    You should have received a copy of the GNU General Public License
-    along with CopyQ.  If not, see <http://www.gnu.org/licenses/>.
-*/
-
-#ifndef SCRIPTABLEPROXY_H
-#define SCRIPTABLEPROXY_H
 
 #include "common/clipboardmode.h"
 #include "common/command.h"
+#include "common/clientsocket.h"
 #include "gui/clipboardbrowser.h"
 #include "gui/notificationbutton.h"
+#include "gui/notification.h"
 
 #include <QList>
 #include <QMetaObject>
@@ -34,26 +19,33 @@
 #include <QVariant>
 #include <QVector>
 
-#include <unordered_map>
-
 class ClipboardBrowser;
-class KeyClicker;
 class MainWindow;
 class QEventLoop;
 class QPersistentModelIndex;
 class QPixmap;
 
 struct NamedValue {
-    NamedValue() {}
+    NamedValue() = default;
     NamedValue(const QString &name, const QVariant &value) : name(name), value(value) {}
     QString name;
     QVariant value;
 };
 
-using NamedValueList = QVector<NamedValue>;
+struct VariantMapList {
+    QVector<QVariantMap> items;
+};
 
-struct ScriptablePath {
-    QString path;
+struct NamedValueList {
+    QList<NamedValue> items;
+};
+
+struct NotificationButtonList {
+    QList<NotificationButton> items;
+};
+
+struct KeyboardModifierList {
+    Qt::KeyboardModifiers items;
 };
 
 struct ItemSelection {
@@ -61,26 +53,35 @@ struct ItemSelection {
     QList<QPersistentModelIndex> indexes;
 };
 
+struct MessageData {
+    QString title;
+    QString message;
+    int timeoutMs = -1;
+    QString icon;
+    QString notificationId;
+    NotificationButtonList buttons;
+    Notification::Urgency urgency = Notification::Urgency::Default;
+    Notification::Persistency persistency = Notification::Persistency::Default;
+};
+
 Q_DECLARE_METATYPE(NamedValueList)
-Q_DECLARE_METATYPE(ScriptablePath)
-Q_DECLARE_METATYPE(NotificationButtons)
-Q_DECLARE_METATYPE(QVector<QVariantMap>)
-Q_DECLARE_METATYPE(Qt::KeyboardModifiers)
+Q_DECLARE_METATYPE(NotificationButtonList)
+Q_DECLARE_METATYPE(VariantMapList)
+Q_DECLARE_METATYPE(KeyboardModifierList)
+Q_DECLARE_METATYPE(MessageData)
 
-#if QT_VERSION < QT_VERSION_CHECK(6,0,0)
-Q_DECLARE_METATYPE(ClipboardMode)
-#endif
-
-QDataStream &operator<<(QDataStream &out, const NotificationButton &button);
-QDataStream &operator>>(QDataStream &in, NotificationButton &button);
+QDataStream &operator<<(QDataStream &out, const NotificationButtonList &list);
+QDataStream &operator>>(QDataStream &in, NotificationButtonList &list);
 QDataStream &operator<<(QDataStream &out, const NamedValueList &list);
 QDataStream &operator>>(QDataStream &in, NamedValueList &list);
+QDataStream &operator<<(QDataStream &out, const VariantMapList &list);
+QDataStream &operator>>(QDataStream &in, VariantMapList &list);
 QDataStream &operator<<(QDataStream &out, ClipboardMode mode);
 QDataStream &operator>>(QDataStream &in, ClipboardMode &mode);
-QDataStream &operator<<(QDataStream &out, const ScriptablePath &path);
-QDataStream &operator>>(QDataStream &in, ScriptablePath &path);
-QDataStream &operator<<(QDataStream &out, Qt::KeyboardModifiers value);
-QDataStream &operator>>(QDataStream &in, Qt::KeyboardModifiers &value);
+QDataStream &operator<<(QDataStream &out, KeyboardModifierList value);
+QDataStream &operator>>(QDataStream &in, KeyboardModifierList &value);
+QDataStream &operator<<(QDataStream &out, const MessageData &value);
+QDataStream &operator>>(QDataStream &in, MessageData &value);
 
 class ScriptableProxy final : public QObject
 {
@@ -92,11 +93,16 @@ public:
     void callFunction(const QByteArray &serializedFunctionCall);
 
     int actionId() const { return m_actionId; }
+    ClientSocketId clientSocketId() const { return m_clientSocketId; }
+    void setClientSocketId(ClientSocketId id) { m_clientSocketId = id; }
 
     void setFunctionCallReturnValue(const QByteArray &bytes);
     void setInputDialogResult(const QByteArray &bytes);
 
     void safeDeleteLater();
+
+    void disconnectClient();
+    void abortEvaluation();
 
 public slots:
     QVariantMap getActionData(int id);
@@ -118,6 +124,7 @@ public slots:
     bool preview(const QVariant &arg);
     void disableMonitoring(bool arg1);
     void setClipboard(const QVariantMap &data, ClipboardMode mode);
+    bool registerClipboardProviderAction(int actionId, ClipboardMode mode);
 
     QString renameTab(const QString &arg1, const QString &arg2);
 
@@ -135,23 +142,19 @@ public slots:
     void action(const QVariantMap &arg1, const Command &arg2);
 
     void runInternalAction(const QVariantMap &data, const QString &command);
-    QByteArray tryGetCommandOutput(const QString &command);
 
-    void showMessage(const QString &title,
-            const QString &msg,
-            const QString &icon,
-            int msec,
-            const QString &notificationId = QString(),
-            const NotificationButtons &buttons = NotificationButtons());
+    void showMessage(const MessageData &messageData);
+
+    QString playSound(const QString &filePath, float volume);
 
     QVariantMap nextItem(const QString &tabName, int where);
     void browserMoveToClipboard(const QString &tabName, int row);
     void browserSetCurrent(const QString &tabName, int arg1);
     QString browserRemoveRows(const QString &tabName, QVector<int> rows);
-    void browserMoveSelected(int targetRow);
+    void browserMoveSelected(int targetRow, const QString &tabName);
 
-    void browserEditRow(const QString &tabName, int arg1);
-    void browserEditNew(const QString &tabName, const QString &arg1, bool changeClipboard);
+    void browserEditRow(const QString &tabName, int arg1, const QString &format);
+    void browserEditNew(const QString &tabName, const QString &format, const QByteArray &content, bool changeClipboard);
 
     QStringList tabs();
     bool toggleVisible();
@@ -159,12 +162,12 @@ public slots:
     bool toggleCurrentMenu();
     int findTabIndex(const QString &arg1);
 
-    int menuItems(const QVector<QVariantMap> &items);
+    int menuItems(const VariantMapList &items);
 
     void openActionDialog(const QVariantMap &arg1);
 
-    bool loadTab(const QString &arg1);
-    bool saveTab(const QString &tabName, const QString &arg1);
+    bool loadTab(const QString &fileName);
+    bool saveTab(const QString &tabName, const QString &fileName);
 
     bool importData(const QString &fileName);
     bool exportData(const QString &fileName);
@@ -174,10 +177,11 @@ public slots:
     QVariant toggleConfig(const QString &optionName);
 
     int browserLength(const QString &tabName);
-    bool browserOpenEditor(const QString &tabName, const QByteArray &arg1, bool changeClipboard);
+    bool browserOpenEditor(
+        const QString &tabName, int row, const QString &format, const QByteArray &content, bool changeClipboard);
 
-    QString browserInsert(const QString &tabName, int row, const QVector<QVariantMap> &items);
-    QString browserChange(const QString &tabName, int row, const QVector<QVariantMap> &items);
+    QString browserInsert(const QString &tabName, int row, const VariantMapList &items);
+    QString browserChange(const QString &tabName, int row, const VariantMapList &items);
 
     QByteArray browserItemData(const QString &tabName, int arg1, const QString &arg2);
     QVariantMap browserItemData(const QString &tabName, int arg1);
@@ -186,16 +190,17 @@ public slots:
 
     QString tab(const QString &tabName);
 
-    int currentItem();
+    int currentItem(const QString &tabName);
     bool selectItems(const QString &tabName, const QVector<int> &rows);
 
-    QVector<int> selectedItems();
+    QVector<int> selectedItems(const QString &tabName);
+    QString selectedTab();
 
-    QVariantMap selectedItemData(int selectedIndex);
-    bool setSelectedItemData(int selectedIndex, const QVariantMap &data);
+    QVariantMap selectedItemData(int selectedIndex, const QString &tabName);
+    bool setSelectedItemData(int selectedIndex, const QVariantMap &data, const QString &tabName);
 
-    QVector<QVariantMap> selectedItemsData();
-    void setSelectedItemsData(const QVector<QVariantMap> &dataList);
+    VariantMapList selectedItemsData(const QString &tabName);
+    void setSelectedItemsData(const VariantMapList &dataList, const QString &tabName);
 
     int createSelection(const QString &tabName);
     int selectionCopy(int id);
@@ -218,13 +223,11 @@ public slots:
     QVariantList selectionGetItemsFormat(int id, const QString &format);
     void selectionSetItemsFormat(int id, const QString &mime, const QVariant &value);
     void selectionMove(int id, int row);
+    void selectionSort(int id, const QVector<int> &indexes);
 
-#ifdef HAS_TESTS
-    void sendKeys(const QString &expectedWidgetName, const QString &keys, int delay);
-    bool sendKeysSucceeded();
-    bool sendKeysFailed();
     QString testSelected();
-#endif // HAS_TESTS
+
+    QVariant callPlugin(const QVariantList &arguments);
 
     void serverLog(const QString &text);
 
@@ -232,7 +235,7 @@ public slots:
 
     int inputDialog(const NamedValueList &values);
 
-    void setSelectedItemsData(const QString &mime, const QVariant &value);
+    void setSelectedItemsData(const QString &mime, const QVariant &value, const QString &tabName);
 
     void filter(const QString &text);
     QString filter();
@@ -245,13 +248,9 @@ public slots:
 
     QStringList screenNames();
 
-    Qt::KeyboardModifiers queryKeyboardModifiers();
+    KeyboardModifierList queryKeyboardModifiers();
     QPoint pointerPosition();
     void setPointerPosition(int x, int y);
-
-    QString pluginsPath();
-    QString themesPath();
-    QString translationsPath();
 
     QString iconColor();
     bool setIconColor(const QString &name);
@@ -285,30 +284,43 @@ public slots:
 
     QStringList styles();
 
+    QString stats();
+
+    void setScriptOverrides(const QVector<int> &overrides);
+
 signals:
     void functionCallFinished(int functionCallId, const QVariant &returnValue);
     void inputDialogFinished(int dialogId, const NamedValueList &result);
     void sendMessage(const QByteArray &message, int messageCode);
-    void clientDisconnected();
-    void abortEvaluation();
+    void abortEvaluationRequest();
+    void actionIdChanged(int actionId);
+    void clipboardProviderRegistered(ClientSocketId clientId, ClipboardMode mode);
 
 private:
     ClipboardBrowser *fetchBrowser(const QString &tabName);
+    ClipboardBrowser *fetchExistingBrowser(const QString &tabName);
+
+    ClipboardBrowser *selectedBrowser();
 
     QVariantMap itemData(const QString &tabName, int i);
     QByteArray itemData(const QString &tabName, int i, const QString &mime);
 
-    ClipboardBrowser *currentBrowser() const;
-    QList<QPersistentModelIndex> selectedIndexes() const;
+    void setItemsData(
+        ClipboardBrowser *c, const QList<QPersistentModelIndex> &indexes, const QString &mime, const QVariant &value);
+
+    template<typename T>
+    T getSelectionData(const QString &mime);
+
+    QPersistentModelIndex currentIndex(ClipboardBrowser *c = nullptr);
+    QList<QPersistentModelIndex> selectedIndexes(ClipboardBrowser *c = nullptr);
+
+    ClipboardBrowser *browserForIndexes(const QList<QPersistentModelIndex> &indexes) const;
 
     QVariant waitForFunctionCallFinished(int functionId);
 
     QByteArray callFunctionHelper(const QByteArray &serializedFunctionCall);
 
-#ifdef HAS_TESTS
-    KeyClicker *keyClicker();
-    KeyClicker *m_keyClicker = nullptr;
-#endif // HAS_TESTS
+    bool getSelectionData();
 
     MainWindow* m_wnd;
     QVariantMap m_actionData;
@@ -324,10 +336,8 @@ private:
     QMap<int, ItemSelection> m_selections;
 
     bool m_disconnected = false;
+    ClientSocketId m_clientSocketId = 0;
 };
 
-QString pluginsPath();
-QString themesPath();
-QString translationsPath();
-
-#endif // SCRIPTABLEPROXY_H
+void setClipboardMonitorRunning(bool running);
+bool isClipboardMonitorRunning();

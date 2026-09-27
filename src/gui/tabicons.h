@@ -1,23 +1,6 @@
-/*
-    Copyright (c) 2020, Lukas Holecek <hluk@email.cz>
+// SPDX-License-Identifier: GPL-3.0-or-later
+#pragma once
 
-    This file is part of CopyQ.
-
-    CopyQ is free software: you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation, either version 3 of the License, or
-    (at your option) any later version.
-
-    CopyQ is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
-
-    You should have received a copy of the GNU General Public License
-    along with CopyQ.  If not, see <http://www.gnu.org/licenses/>.
-*/
-#ifndef TABICONS_H
-#define TABICONS_H
 
 #include <QtContainerFwd>
 
@@ -25,20 +8,27 @@ class QIcon;
 class QComboBox;
 class QString;
 class QWidget;
+class Tabs;
 
 /** Return list of saved tabs (ordered by "tabs" option if possible). */
 QList<QString> savedTabs();
 
 QString getIconNameForTabName(const QString &tabName);
 
-void setIconNameForTabName(const QString &name, const QString &icon);
+void setIconNameForTabName(const QString &tabName, const QString &icon);
 
 QIcon getIconForTabName(const QString &tabName);
+
+/**
+ * Return icon for a tab using already loaded tab properties.
+ *
+ * Prefer this over getIconForTabName(const QString &) when looking up icons
+ * for many tabs, so the configuration is read only once.
+ */
+QIcon getIconForTabName(const QString &tabName, const Tabs &tabs);
 
 void initTabComboBox(QComboBox *comboBox);
 
 void setDefaultTabItemCounterStyle(QWidget *widget);
 
 void setComboBoxItems(QComboBox *comboBox, const QList<QString> &items);
-
-#endif // TABICONS_H

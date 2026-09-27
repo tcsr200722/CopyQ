@@ -1,39 +1,29 @@
-/*
-    Copyright (c) 2020, Lukas Holecek <hluk@email.cz>
+// SPDX-License-Identifier: GPL-3.0-or-later
 
-    This file is part of CopyQ.
+#pragma once
 
-    CopyQ is free software: you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation, either version 3 of the License, or
-    (at your option) any later version.
-
-    CopyQ is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
-
-    You should have received a copy of the GNU General Public License
-    along with CopyQ.  If not, see <http://www.gnu.org/licenses/>.
-*/
-
-#ifndef MACCLIPBOARD_H
-#define MACCLIPBOARD_H
 
 #include "platform/dummy/dummyclipboard.h"
 
+class MacTimer;
+
 class MacClipboard final : public DummyClipboard {
 public:
-    void startMonitoring(const QStringList &) override;
-
     void setData(ClipboardMode mode, const QVariantMap &dataMap) override;
 
-    QByteArray clipboardOwner() override;
+    bool isHidden(const QMimeData &data) const override;
+
+protected:
+    void startMonitoringBackend(const QStringList &, ClipboardModeMask) override;
+    void stopMonitoringBackend() override;
+    void onChanged(int mode) override;
+    const long int *clipboardSequenceNumber(ClipboardMode) const override {
+        return &m_prevChangeCount;
+    }
 
 private:
     void clipboardTimeout();
 
     long int m_prevChangeCount = 0;
+    MacTimer *m_timer = nullptr;
 };
-
-#endif // MACCLIPBOARD_H

@@ -1,42 +1,23 @@
-/*
-    Copyright (c) 2020, Lukas Holecek <hluk@email.cz>
+// SPDX-License-Identifier: GPL-3.0-or-later
+#pragma once
 
-    This file is part of CopyQ.
+#include <QtGlobal>
 
-    CopyQ is free software: you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation, either version 3 of the License, or
-    (at your option) any later version.
-
-    CopyQ is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
-
-    You should have received a copy of the GNU General Public License
-    along with CopyQ.  If not, see <http://www.gnu.org/licenses/>.
-*/
-
-#ifndef URLPASTEBOARDMIME_H
-#define URLPASTEBOARDMIME_H
-
-#include <QMacPasteboardMime>
+#include <QUtiMimeConverter>
+using UrlPasteboardMimeBase = QUtiMimeConverter;
 
 /**
  * Class for doing conversions of URLs between OS X UTIs and "normal" mimeTypes.
  */
-class UrlPasteboardMime final : public QMacPasteboardMime {
+class UrlPasteboardMime final : public UrlPasteboardMimeBase {
 public:
     //! Create an instance of UrlPasteboardMime which will try to convert to/from the given UTI.
-    UrlPasteboardMime(const QString &urlUti);
-    QString convertorName();
-    QString flavorFor(const QString &mime);
-    QString mimeFor(QString flav);
-    bool canConvert(const QString &mime, QString flav);
-    QVariant convertToMime(const QString &mime, QList<QByteArray> data, QString flav);
-    QList<QByteArray> convertFromMime(const QString &mime, QVariant data, QString flav);
+    explicit UrlPasteboardMime(const QString &urlUti);
+
+    QString mimeForUti(const QString &uti) const override;
+    QString utiForMime(const QString &mime) const override;
+    QVariant convertToMime(const QString &mime, const QList<QByteArray> &data, const QString &uti) const override;
+    QList<QByteArray> convertFromMime(const QString &mime, const QVariant &data, const QString &uti) const override;
 private:
     QString m_urlUti;
 };
-
-#endif // URLPASTEBOARDMIME_H

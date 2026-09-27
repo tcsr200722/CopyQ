@@ -1,36 +1,15 @@
-/*
-    Copyright (c) 2020, Lukas Holecek <hluk@email.cz>
+// SPDX-License-Identifier: GPL-3.0-or-later
 
-    This file is part of CopyQ.
+#pragma once
 
-    CopyQ is free software: you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation, either version 3 of the License, or
-    (at your option) any later version.
 
-    CopyQ is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
-
-    You should have received a copy of the GNU General Public License
-    along with CopyQ.  If not, see <http://www.gnu.org/licenses/>.
-*/
-
-#ifndef CLIPBOARDMONITOR_H
-#define CLIPBOARDMONITOR_H
-
+#include "app/clipboardownermonitor.h"
+#include "common/clipboardmode.h"
 #include "common/common.h"
-#include "platform/platformnativeinterface.h"
 #include "platform/platformclipboard.h"
+#include "platform/platformnativeinterface.h"
 
 #include <QVariantMap>
-
-enum class ClipboardOwnership {
-    Foreign,
-    Own,
-    Hidden,
-};
 
 class ClipboardMonitor final : public QObject
 {
@@ -38,11 +17,19 @@ class ClipboardMonitor final : public QObject
 
 public:
     explicit ClipboardMonitor(const QStringList &formats);
+    void startMonitoring();
+    QString currentClipboardOwner();
+    void setClipboardOwner(const QString &owner);
 
 signals:
-    void clipboardChanged(const QVariantMap &data, ClipboardOwnership ownership);
+    void clipboardChanged(const QVariantMap &data);
+    void secretClipboardChanged(const QVariantMap &data);
+    void hiddenClipboardChanged(const QVariantMap &data);
+    void ownClipboardChanged(const QVariantMap &data);
     void clipboardUnchanged(const QVariantMap &data);
-    void synchronizeSelection(ClipboardMode sourceMode, const QString &text, uint targetTextHash);
+    void saveData(const QVariantMap &data);
+    void synchronizeSelection(ClipboardMode sourceMode, uint sourceTextHash, uint targetTextHash);
+    void fetchCurrentClipboardOwner(QString *title);
 
 private:
     void onClipboardChanged(ClipboardMode mode);
@@ -51,10 +38,14 @@ private:
     QVariantMap m_selectionData;
 
     PlatformClipboardPtr m_clipboard;
+    ClipboardConnectionPtr m_connection;
     QStringList m_formats;
+    ClipboardModeMask m_modes;
 
     QString m_clipboardTab;
     bool m_storeClipboard;
+
+    ClipboardOwnerMonitor m_ownerMonitor;
 
 #ifdef HAS_MOUSE_SELECTIONS
     bool m_storeSelection;
@@ -62,6 +53,6 @@ private:
     bool m_clipboardToSelection;
     bool m_selectionToClipboard;
 #endif
-};
 
-#endif // CLIPBOARDMONITOR_H
+    QString m_clipboardOwner;
+};

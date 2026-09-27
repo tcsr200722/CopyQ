@@ -1,29 +1,12 @@
-/*
-    Copyright (c) 2020, Lukas Holecek <hluk@email.cz>
-
-    This file is part of CopyQ.
-
-    CopyQ is free software: you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation, either version 3 of the License, or
-    (at your option) any later version.
-
-    CopyQ is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
-
-    You should have received a copy of the GNU General Public License
-    along with CopyQ.  If not, see <http://www.gnu.org/licenses/>.
-*/
+// SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "app.h"
 
-#include "common/command.h"
 #include "common/commandstore.h"
-#include "common/log.h"
 #include "common/settings.h"
 #include "common/textdata.h"
+#include "common/config.h"
+#include "item/serialize.h"
 #include "platform/platformnativeinterface.h"
 #ifdef Q_OS_UNIX
 #   include "platform/unix/unixsignalhandler.h"
@@ -33,41 +16,13 @@
 #include <QDir>
 #include <QLibraryInfo>
 #include <QLocale>
+#include <QStandardPaths>
 #include <QTranslator>
 #include <QVariant>
 
 #include <memory>
 
 namespace {
-
-#ifdef HAS_TESTS
-/**
- * Return true only this session was started from tests.
- */
-bool isTesting()
-{
-    return !qEnvironmentVariableIsEmpty("COPYQ_TEST_ID");
-}
-
-/**
- * Change application name for tests and set "CopyQ_test_id" property of application
- * to current test ID. The ID is "CORE" for core tests and ItemLoaderInterface::id() for plugins.
- *
- * This function does nothing if isTesting() returns false.
- */
-void initTests()
-{
-    if ( !isTesting() )
-        return;
-
-    const QString session = "copyq.test";
-    QCoreApplication::setOrganizationName(session);
-    QCoreApplication::setApplicationName(session);
-
-    const QString testId = getTextData( qgetenv("COPYQ_TEST_ID") );
-    qApp->setProperty("CopyQ_test_id", testId);
-}
-#endif // HAS_TESTS
 
 void installTranslator(const QString &filename, const QString &directory)
 {
@@ -78,16 +33,16 @@ void installTranslator(const QString &filename, const QString &directory)
 
 void installTranslator()
 {
-    QString locale = QString::fromUtf8( qgetenv("COPYQ_LOCALE") );
+    QString locale = qEnvironmentVariable("COPYQ_LOCALE");
     if (locale.isEmpty()) {
-        locale = QSettings().value("Options/language").toString();
+        locale = QSettings().value(QStringLiteral("Options/language")).toString();
         if (locale.isEmpty())
             locale = QLocale::system().name();
-        qputenv("COPYQ_LOCALE", locale.toUtf8());
+        qputenv("COPYQ_LOCALE", locale.toLocal8Bit());
     }
 
 #ifdef COPYQ_TRANSLATION_PREFIX
-    const QString translationPrefix = COPYQ_TRANSLATION_PREFIX;
+    const QString translationPrefix = adjustedInstallPath(QStringLiteral(COPYQ_TRANSLATION_PREFIX));
 #else
     const QString translationPrefix = platformNativeInterface()->translationPrefix();
 #endif
@@ -96,78 +51,107 @@ void installTranslator()
     translationDirectories.prepend(translationPrefix);
 
     // 1. Qt translations
-    installTranslator("qt_" + locale, translationPrefix);
-    installTranslator("qt_" + locale, QLibraryInfo::location(QLibraryInfo::TranslationsPath));
+    installTranslator(QLatin1String("qt_") + locale, translationPrefix);
+    installTranslator(QLatin1String("qt_") + locale, QLibraryInfo::path(QLibraryInfo::TranslationsPath));
 
     // 2. installed translations
-    installTranslator("copyq_" + locale, translationPrefix);
+    installTranslator(QLatin1String("copyq_") + locale, translationPrefix);
 
     // 3. custom translations
-    const QByteArray customPath = qgetenv("COPYQ_TRANSLATION_PREFIX");
+    const QString customPath = qEnvironmentVariable("COPYQ_TRANSLATION_PREFIX");
     if ( !customPath.isEmpty() ) {
-        const QString customDir = QDir::fromNativeSeparators( getTextData(customPath) );
-        installTranslator("copyq_" + locale, customDir);
+        const QString customDir = QDir::fromNativeSeparators(customPath);
+        installTranslator(QLatin1String("copyq_") + locale, customDir);
         translationDirectories.prepend(customDir);
     }
 
     // 4. compiled, non-installed translations in debug builds
 #ifdef COPYQ_DEBUG
-    const QString compiledTranslations = QCoreApplication::applicationDirPath() + "/src";
-    installTranslator("copyq_" + locale, compiledTranslations);
+    const QString compiledTranslations = QCoreApplication::applicationDirPath() + QLatin1String("/src");
+    installTranslator(QLatin1String("copyq_") + locale, compiledTranslations);
     translationDirectories.prepend(compiledTranslations);
 #endif
 
     qApp->setProperty("CopyQ_translation_directories", translationDirectories);
-
-#ifdef HAS_TESTS
-    // Keep texts and shortcuts untranslated for tests.
-    if ( isTesting() )
-        return;
-#endif
 
     QLocale::setDefault(QLocale(locale));
 }
 
 } // namespace
 
+void setSessionName(const QString &sessionName)
+{
+    const QString appName =
+        sessionName.isEmpty()
+        ? QStringLiteral("copyq")
+        : QStringLiteral("copyq-%1").arg(sessionName);
+    QCoreApplication::setOrganizationName(appName);
+    QCoreApplication::setApplicationName(appName);
+}
+
+void initSession(QCoreApplication *app, const QString &sessionName)
+{
+    qputenv("COPYQ_SESSION_NAME", sessionName.toLocal8Bit());
+    qputenv("COPYQ", applicationLaunchPath().toLocal8Bit());
+
+    const auto settingsPath = qEnvironmentVariable("COPYQ_SETTINGS_PATH");
+    if ( !settingsPath.isEmpty() ) {
+        QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, settingsPath);
+
+        // Setting the NativeFormat paths on Windows, macOS, and iOS has no effect.
+        QSettings::setDefaultFormat(QSettings::IniFormat);
+    }
+
+    if ( qEnvironmentVariableIsEmpty("COPYQ_ITEM_DATA_PATH") ) {
+        if ( !app->property("CopyQ_item_data_path").isValid() ) {
+            app->setProperty(
+                "CopyQ_item_data_path",
+                QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation)
+                + QLatin1String("/items"));
+        }
+    } else {
+        app->setProperty(
+            "CopyQ_item_data_path",
+            qEnvironmentVariable("COPYQ_ITEM_DATA_PATH")
+        );
+    }
+
+    if ( qEnvironmentVariableIsEmpty("COPYQ_STATE_PATH") ) {
+        if ( !app->property("CopyQ_state_path").isValid() ) {
+#if defined(Q_OS_UNIX) && !defined(Q_OS_MACOS)
+            const QString stateHome = qEnvironmentVariable("XDG_STATE_HOME");
+            const QString base = (!stateHome.isEmpty() && stateHome.startsWith(QLatin1Char('/')))
+                ? stateHome
+                : QDir::homePath() + QLatin1String("/.local/state");
+            app->setProperty("CopyQ_state_path",
+                base + QLatin1Char('/') + QCoreApplication::organizationName());
+#else
+            app->setProperty("CopyQ_state_path",
+                QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation));
+#endif
+        }
+    } else {
+        app->setProperty("CopyQ_state_path",
+            qEnvironmentVariable("COPYQ_STATE_PATH"));
+    }
+}
+
 App::App(QCoreApplication *application,
         const QString &sessionName)
     : m_app(application)
     , m_exitCode(0)
     , m_started(false)
-    , m_closed(false)
 {
+    registerDataFileConverter();
+
     QObject::connect(m_app, &QCoreApplication::aboutToQuit, [this]() { exit(); });
 
 #ifdef Q_OS_UNIX
     startUnixSignalHandler();
 #endif
 
-    QString session("copyq");
-    if ( !sessionName.isEmpty() )
-        session += "-" + sessionName;
     m_app->setProperty( "CopyQ_session_name", QVariant(sessionName) );
-
-    qputenv("COPYQ_SESSION_NAME", sessionName.toUtf8());
-    qputenv("COPYQ", QCoreApplication::applicationFilePath().toUtf8());
-
-    const auto settingsPath = qgetenv("COPYQ_SETTINGS_PATH");
-    if ( !settingsPath.isEmpty() ) {
-        const auto path = QString::fromUtf8(settingsPath);
-        QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, path);
-
-        // Setting the NativeFormat paths on Windows, macOS, and iOS has no effect.
-        QSettings::setDefaultFormat(QSettings::IniFormat);
-    }
-
-    QCoreApplication::setOrganizationName(session);
-    QCoreApplication::setApplicationName(session);
-
-#ifdef HAS_TESTS
-    initTests();
-#endif
-
-    initLogging();
+    initSession(m_app, sessionName);
 }
 
 App::~App()
@@ -199,15 +183,20 @@ void App::exit(int exitCode)
     if ( wasClosed() )
         return;
 
+    // Prefer signal exit code if a Unix signal triggered the shutdown.
+    const QVariant signalCode = m_app->property("CopyQ_signal_exit_code");
+    if (signalCode.isValid())
+        exitCode = signalCode.toInt();
+
     if (!m_started)
         ::exit(exitCode);
 
     m_exitCode = exitCode;
-    m_closed = true;
+    m_app->setProperty("CopyQ_quitting", true);
     QCoreApplication::exit(exitCode);
 }
 
 bool App::wasClosed() const
 {
-    return m_closed;
+    return m_app->property("CopyQ_quitting").toBool();
 }

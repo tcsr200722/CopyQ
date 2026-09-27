@@ -1,21 +1,4 @@
-/*
-    Copyright (c) 2020, Lukas Holecek <hluk@email.cz>
-
-    This file is part of CopyQ.
-
-    CopyQ is free software: you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation, either version 3 of the License, or
-    (at your option) any later version.
-
-    CopyQ is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
-
-    You should have received a copy of the GNU General Public License
-    along with CopyQ.  If not, see <http://www.gnu.org/licenses/>.
-*/
+// SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "itemnotes.h"
 #include "ui_itemnotessettings.h"
@@ -39,44 +22,45 @@
 #include <QTextEdit>
 #include <QTimer>
 #include <QToolTip>
+#include <QVariantMap>
 #include <QtPlugin>
-
-#include <cmath>
 
 namespace {
 
 // Limit number of characters for performance reasons.
 const int defaultMaxBytes = 10*1024;
 
-const int notesIndent = 16;
 
-QLatin1String configNotesAtBottom("notes_at_bottom");
-QLatin1String configNotesBeside("notes_beside");
-QLatin1String configShowTooltip("show_tooltip");
+const QLatin1String configNotesAtBottom("notes_at_bottom");
+const QLatin1String configNotesBeside("notes_beside");
+const QLatin1String configShowTooltip("show_tooltip");
 
 QWidget *createIconWidget(const QByteArray &icon, QWidget *parent)
 {
-    if (!icon.isEmpty()) {
-        QPixmap p;
-        if (p.loadFromData(icon)) {
-            const auto ratio = pixelRatio(parent);
-            p.setDevicePixelRatio(ratio);
+    QPixmap p;
+    if (p.loadFromData(icon)) {
+        const auto ratio = pixelRatio(parent);
+        p.setDevicePixelRatio(ratio);
 
-            const int side = ratio * (iconFontSizePixels() + 2);
-            p = p.scaled(side, side, Qt::KeepAspectRatio, Qt::SmoothTransformation);
-            QLabel *label = new QLabel(parent);
-            const auto m = side / 4;
-            label->setFixedSize( p.size() / ratio + QSize(m, m) );
-            label->setAlignment(Qt::AlignCenter);
-            label->setPixmap(p);
-            return label;
-        }
+        const int side = ratio * (iconFontSizePixels() + 2);
+        p = p.scaled(side, side, Qt::KeepAspectRatio, Qt::SmoothTransformation);
+        auto *label = new QLabel(parent);
+        const auto m = side / 4;
+        label->setFixedSize( p.size() / ratio + QSize(m, m) );
+        label->setAlignment(Qt::AlignCenter);
+        label->setPixmap(p);
+        return label;
     }
 
-    return new IconWidget(IconPenSquare, parent);
+    return new IconWidget(QString::fromUtf8(icon), parent);
 }
 
 } // namespace
+
+static int resolveNotesIndent(int propertyWidth)
+{
+    return (propertyWidth > 0) ? propertyWidth : 16;
+}
 
 ItemNotes::ItemNotes(ItemWidget *childItem, const QString &text, const QByteArray &icon,
                      NotesPosition notesPosition, bool showToolTip)
@@ -84,6 +68,7 @@ ItemNotes::ItemNotes(ItemWidget *childItem, const QString &text, const QByteArra
     , ItemWidgetWrapper(childItem, this)
     , m_notes(new QTextEdit(this))
     , m_icon(nullptr)
+    , m_labelLayout(nullptr)
     , m_timerShowToolTip(nullptr)
     , m_toolTipText()
 {
@@ -116,19 +101,19 @@ ItemNotes::ItemNotes(ItemWidget *childItem, const QString &text, const QByteArra
     else
         layout = new QVBoxLayout(this);
 
-    auto labelLayout = new QHBoxLayout;
-    labelLayout->setContentsMargins(notesIndent, 0, 0, 0);
+    m_labelLayout = new QHBoxLayout;
+    m_labelLayout->setContentsMargins(resolveNotesIndent(m_indicatorWidth), 0, 0, 0);
 
     if (m_icon)
-        labelLayout->addWidget(m_icon, 0, Qt::AlignLeft | Qt::AlignTop);
+        m_labelLayout->addWidget(m_icon, 0, Qt::AlignLeft | Qt::AlignTop);
 
-    labelLayout->addWidget(m_notes, 1, Qt::AlignLeft | Qt::AlignTop);
+    m_labelLayout->addWidget(m_notes, 1, Qt::AlignLeft | Qt::AlignTop);
 
     if (notesPosition == NotesBelow) {
         layout->addWidget( childItem->widget() );
-        layout->addLayout(labelLayout);
+        layout->addLayout(m_labelLayout);
     } else {
-        layout->addLayout(labelLayout);
+        layout->addLayout(m_labelLayout);
         layout->addWidget( childItem->widget() );
     }
 
@@ -143,6 +128,15 @@ ItemNotes::ItemNotes(ItemWidget *childItem, const QString &text, const QByteArra
 
     layout->setContentsMargins({});
     layout->setSpacing(0);
+}
+
+void ItemNotes::setNotesIndicatorWidth(int width)
+{
+    m_indicatorWidth = width;
+    if (m_labelLayout) {
+        const int indent = resolveNotesIndent(m_indicatorWidth);
+        m_labelLayout->setContentsMargins(indent, 0, 0, 0);
+    }
 }
 
 void ItemNotes::setCurrent(bool current)
@@ -167,7 +161,7 @@ void ItemNotes::updateSize(QSize maximumSize, int idealWidth)
     setMaximumSize(maximumSize);
 
     if (m_notes) {
-        const int w = maximumSize.width() - 2 * notesIndent - 8;
+        const int w = maximumSize.width() - 2 * resolveNotesIndent(m_indicatorWidth) - 8;
         QTextDocument *doc = m_notes->document();
         doc->setTextWidth(w);
         m_notes->setFixedSize(
@@ -189,14 +183,20 @@ void ItemNotes::paintEvent(QPaintEvent *event)
     if (m_notes != nullptr) {
         QPainter p(this);
 
-        QColor c = p.pen().color();
-        c.setAlpha(80);
+        QColor c;
+        if (m_indicatorColor.isValid()) {
+            c = m_indicatorColor;
+        } else {
+            c = p.pen().color();
+            c.setAlpha(80);
+        }
         p.setBrush(c);
         p.setPen(Qt::NoPen);
         QWidget *w = m_icon ? m_icon : m_notes;
+        const int indent = resolveNotesIndent(m_indicatorWidth);
         const auto height = std::max(w->height(), m_notes->height()) - 8;
-        p.drawRect(w->x() - notesIndent + 4, w->y() + 4,
-                   notesIndent - 4, height);
+        p.drawRect(w->x() - indent + 4, w->y() + 4,
+                   indent - 4, height);
     }
 }
 
@@ -215,15 +215,13 @@ void ItemNotes::showToolTip()
     if ( !isVisible() )
         return;
 
-    QPoint toolTipPosition = QPoint(parentWidget()->contentsRect().width() - 16, height() - 16);
+    auto toolTipPosition = QPoint(parentWidget()->contentsRect().width() - 16, height() - 16);
     toolTipPosition = mapToGlobal(toolTipPosition);
 
     QToolTip::showText(toolTipPosition, m_toolTipText, this);
 }
 
-ItemNotesLoader::ItemNotesLoader()
-{
-}
+ItemNotesLoader::ItemNotesLoader() = default;
 
 ItemNotesLoader::~ItemNotesLoader() = default;
 
@@ -249,7 +247,7 @@ void ItemNotesLoader::loadSettings(const QSettings &settings)
 QWidget *ItemNotesLoader::createSettingsWidget(QWidget *parent)
 {
     ui.reset(new Ui::ItemNotesSettings);
-    QWidget *w = new QWidget(parent);
+    auto *w = new QWidget(parent);
     ui->setupUi(w);
 
     if (m_notesAtBottom)

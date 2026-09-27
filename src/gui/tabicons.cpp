@@ -1,29 +1,15 @@
-/*
-    Copyright (c) 2020, Lukas Holecek <hluk@email.cz>
-
-    This file is part of CopyQ.
-
-    CopyQ is free software: you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation, either version 3 of the License, or
-    (at your option) any later version.
-
-    CopyQ is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
-
-    You should have received a copy of the GNU General Public License
-    along with CopyQ.  If not, see <http://www.gnu.org/licenses/>.
-*/
+// SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "tabicons.h"
 
 #include "common/appconfig.h"
 #include "common/config.h"
 #include "common/settings.h"
+#include "common/tabs.h"
 #include "common/textdata.h"
 #include "gui/iconfactory.h"
+
+#include <QFileInfo>
 
 #include <QComboBox>
 #include <QDir>
@@ -32,20 +18,7 @@
 
 namespace {
 
-QHash<QString, QString> tabIcons()
-{
-    QHash<QString, QString> icons;
-
-    Settings settings;
-    const int size = settings.beginReadArray("Tabs");
-    for(int i = 0; i < size; ++i) {
-        settings.setArrayIndex(i);
-        icons.insert(settings.value("name").toString(),
-                     settings.value("icon").toString());
-    }
-
-    return icons;
-}
+const QString tabsGroup = QStringLiteral("Tabs");
 
 QByteArray tabNameFromFileSuffix(QByteArray base64Suffix)
 {
@@ -58,11 +31,11 @@ QList<QString> savedTabs()
 {
     QList<QString> tabs = AppConfig().option<Config::tabs>();
 
-    const QString configPath = settingsDirectoryPath();
-
-    QDir configDir(configPath);
-    QList<QString> files = configDir.entryList({QStringLiteral("*_tab_*.dat")});
-    files.append(configDir.entryList({QStringLiteral("*_tab_*.dat.tmp")}));
+    const QFileInfo baseInfo(tabDataFileBasePath());
+    QDir dir = baseInfo.dir();
+    const QString prefix = baseInfo.fileName();
+    QList<QString> files = dir.entryList({prefix + QLatin1String("*.dat")});
+    files.append(dir.entryList({prefix + QLatin1String("*.dat.tmp")}));
 
     QRegularExpression re("_tab_([^.]*)");
 
@@ -85,7 +58,7 @@ QList<QString> savedTabs()
 QString getIconNameForTabName(const QString &tabName)
 {
     Settings settings;
-    const int size = settings.beginReadArray("Tabs");
+    const int size = settings.beginReadArray(tabsGroup);
     for(int i = 0; i < size; ++i) {
         settings.setArrayIndex(i);
         if (settings.value("name").toString() == tabName)
@@ -95,21 +68,23 @@ QString getIconNameForTabName(const QString &tabName)
     return QString();
 }
 
-void setIconNameForTabName(const QString &name, const QString &icon)
+void setIconNameForTabName(const QString &tabName, const QString &icon)
 {
-    QHash<QString, QString> icons = tabIcons();
-    icons[name] = icon;
-
     Settings settings;
-    settings.beginWriteArray("Tabs");
-    int i = 0;
-
-    for (auto it = icons.constBegin(); it != icons.constEnd(); ++it) {
-        settings.setArrayIndex(i++);
-        settings.setValue("name", it.key());
-        settings.setValue("icon", it.value());
+    const int size = settings.beginReadArray(tabsGroup);
+    for(int i = 0; i < size; ++i) {
+        settings.setArrayIndex(i);
+        if (settings.value("name").toString() == tabName) {
+            settings.setValue("icon", icon);
+            return;
+        }
     }
+    settings.endArray();
 
+    settings.beginWriteArray(tabsGroup, size + 1);
+    settings.setArrayIndex(size);
+    settings.setValue("name", tabName);
+    settings.setValue("icon", icon);
     settings.endArray();
 }
 
@@ -119,13 +94,20 @@ QIcon getIconForTabName(const QString &tabName)
     return fileName.isEmpty() ? QIcon() : iconFromFile(fileName);
 }
 
+QIcon getIconForTabName(const QString &tabName, const Tabs &tabs)
+{
+    const QString fileName = tabs.tabProperties(tabName).iconName;
+    return fileName.isEmpty() ? QIcon() : iconFromFile(fileName);
+}
+
 void initTabComboBox(QComboBox *comboBox)
 {
     setComboBoxItems(comboBox, AppConfig().option<Config::tabs>());
 
+    const Tabs tabs;
     for (int i = 1; i < comboBox->count(); ++i) {
         const QString tabName = comboBox->itemText(i);
-        const QIcon icon = getIconForTabName(tabName);
+        const QIcon icon = getIconForTabName(tabName, tabs);
         comboBox->setItemIcon(i, icon);
     }
 }
@@ -139,14 +121,6 @@ void setDefaultTabItemCounterStyle(QWidget *widget)
     else
         font.setPixelSize( static_cast<int>(font.pixelSize() * 0.7) );
     widget->setFont(font);
-
-    QPalette pal = widget->palette();
-    const QPalette::ColorRole role = widget->foregroundRole();
-    QColor color = pal.color(role);
-    color.setAlpha( qMax(50, color.alpha() - 100) );
-    color.setRed( qMin(255, color.red() + 120) );
-    pal.setColor(role, color);
-    widget->setPalette(pal);
 }
 
 void setComboBoxItems(QComboBox *comboBox, const QList<QString> &items)

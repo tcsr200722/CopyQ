@@ -1,28 +1,17 @@
-/*
-    Copyright (c) 2020, Lukas Holecek <hluk@email.cz>
-
-    This file is part of CopyQ.
-
-    CopyQ is free software: you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation, either version 3 of the License, or
-    (at your option) any later version.
-
-    CopyQ is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
-
-    You should have received a copy of the GNU General Public License
-    along with CopyQ.  If not, see <http://www.gnu.org/licenses/>.
-*/
+// SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "temporaryfile.h"
 
-#include "common/log.h"
-
 #include <QDir>
+#include <QLoggingCategory>
 #include <QTemporaryFile>
+
+namespace {
+
+Q_DECLARE_LOGGING_CATEGORY(tempFileCategory)
+Q_LOGGING_CATEGORY(tempFileCategory, "copyq.temporaryfile")
+
+} // namespace
 
 bool openTemporaryFile(QTemporaryFile *file, const QString &suffix)
 {
@@ -31,15 +20,14 @@ bool openTemporaryFile(QTemporaryFile *file, const QString &suffix)
     file->setFileTemplate(tmpPath);
 
     if ( !file->open() ) {
-        log( QString("Failed to open temporary file \"%1\" (template \"%2\")")
-             .arg(file->fileName(), tmpPath),
-             LogError );
+        qCCritical(tempFileCategory) << "Failed to open temporary file"
+            << file->fileName() << "template" << tmpPath << ":" << file->errorString();
         return false;
     }
 
     if ( !file->setPermissions(QFile::ReadOwner | QFile::WriteOwner | QFile::ExeOwner) ) {
-        log( QString("Failed set permisssions to temporary file \"%1\"")
-             .arg(file->fileName()), LogError );
+        qCCritical(tempFileCategory) << "Failed set permissions to temporary file"
+            << file->fileName() << ":" << file->errorString();
         return false;
     }
 

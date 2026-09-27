@@ -1,14 +1,11 @@
 set(copyq_plugin_itemencrypted_SOURCES
-    ../../src/common/config.cpp
-    ../../src/common/log.cpp
-    ../../src/common/mimetypes.cpp
+    $<TARGET_OBJECTS:copyq-plugin-config>
+    $<TARGET_OBJECTS:copyq-plugin-iconfont>
+    $<TARGET_OBJECTS:copyq-plugin-iconwidget>
+    $<TARGET_OBJECTS:copyq-plugin-screen>
+    $<TARGET_OBJECTS:copyq-plugin-serialize>
+    $<TARGET_OBJECTS:copyq-plugin-textdata>
     ../../src/common/shortcuts.cpp
-    ../../src/common/textdata.cpp
-    ../../src/gui/iconfont.cpp
-    ../../src/gui/iconwidget.cpp
-    ../../src/gui/screen.cpp
-    ../../src/item/serialize.cpp
     )
 
 copyq_add_plugin(itemencrypted)
-

@@ -1,21 +1,4 @@
-/*
-    Copyright (c) 2020, Lukas Holecek <hluk@email.cz>
-
-    This file is part of CopyQ.
-
-    CopyQ is free software: you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation, either version 3 of the License, or
-    (at your option) any later version.
-
-    CopyQ is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
-
-    You should have received a copy of the GNU General Public License
-    along with CopyQ.  If not, see <http://www.gnu.org/licenses/>.
-*/
+// SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "x11platform.h"
 
@@ -23,27 +6,31 @@
 
 #include "app/applicationexceptionhandler.h"
 #include "common/log.h"
+#include "common/config.h"
 #include "common/textdata.h"
 
 #include <QApplication>
 #include <QCoreApplication>
 #include <QDir>
 #include <QRegularExpression>
+#include <QStandardPaths>
 #include <QStringList>
 #include <QVariant>
 #include <QWidget>
+#include <QFile>
 
-#include "x11platformwindow.h"
 #include "x11platformclipboard.h"
 
-#include <X11/Xatom.h>
-#include <X11/Xlib.h>
+#ifdef COPYQ_WITH_X11
+#   include "x11platformwindow.h"
+#   include <X11/Xatom.h>
+#   include <X11/Xlib.h>
+#endif
 
 #include <memory>
+#include <unistd.h>
 
 namespace {
-
-int (*old_xio_errhandler)(Display *) = nullptr;
 
 const char *defaultDesktopFileContent =
 R"([Desktop Entry]
@@ -52,10 +39,14 @@ Icon=copyq
 GenericName=Clipboard Manager
 Type=Application
 Terminal=false
+StartupNotify=false
 X-KDE-autostart-after=panel
 X-KDE-StartupNotify=false
 X-KDE-UniqueApplet=true
 )";
+
+#ifdef COPYQ_WITH_X11
+int (*old_xio_errhandler)(Display *) = nullptr;
 
 // Try to handle X11 fatal error gracefully.
 int copyq_xio_errhandler(Display *display)
@@ -77,14 +68,23 @@ int copyq_xio_errhandler(Display *display)
     // As documentation for XSetIOErrorHandler states, this function should not return.
     exit(1);
 }
+#endif
 
 #ifdef COPYQ_DESKTOP_FILE
 QString getDesktopFilename()
 {
-    const char *path = getenv("XDG_CONFIG_HOME");
-    QString filename = path ? getTextData(path) : QDir::homePath() + "/.config";
-    filename.append("/autostart/" + QCoreApplication::applicationName() + ".desktop");
-    return filename;
+    const QString configDir = QStandardPaths::writableLocation(QStandardPaths::ConfigLocation);
+    const QString path = QStringLiteral("%1/autostart/%2.desktop")
+        .arg( configDir, QCoreApplication::applicationName() );
+    if ( QFile::exists(path) )
+        return path;
+
+    const QString sessionName = qApp->property("CopyQ_session_name").toString();
+    const QString desktopName = sessionName.isEmpty()
+        ? QGuiApplication::desktopFileName()
+        : QStringLiteral("%1-%2").arg(QGuiApplication::desktopFileName(), sessionName);
+    return QStringLiteral("%1/autostart/%2.desktop")
+        .arg( configDir, desktopName );
 }
 #endif
 
@@ -113,25 +113,34 @@ X11Platform::~X11Platform() = default;
 
 PlatformWindowPtr X11Platform::getWindow(WId winId)
 {
+#ifdef COPYQ_WITH_X11
     if (!X11Info::isPlatformX11())
         return PlatformWindowPtr();
 
     std::unique_ptr<X11PlatformWindow> window(new X11PlatformWindow(winId));
     return PlatformWindowPtr(window->isValid() ? window.release() : nullptr);
+#else
+    Q_UNUSED(winId)
+    return PlatformWindowPtr();
+#endif
 }
 
 PlatformWindowPtr X11Platform::getCurrentWindow()
 {
+#ifdef COPYQ_WITH_X11
     if (!X11Info::isPlatformX11())
         return PlatformWindowPtr();
 
     std::unique_ptr<X11PlatformWindow> window(new X11PlatformWindow());
     return PlatformWindowPtr(window->isValid() ? window.release() : nullptr);
+#else
+    return PlatformWindowPtr();
+#endif
 }
 
 bool X11Platform::canAutostart()
 {
-#ifdef COPYQ_DESKTOP_FILE
+#if defined(COPYQ_AUTOSTART) && defined(COPYQ_DESKTOP_FILE)
     return true;
 #else
     return false;
@@ -140,7 +149,7 @@ bool X11Platform::canAutostart()
 
 bool X11Platform::isAutostartEnabled()
 {
-#ifdef COPYQ_DESKTOP_FILE
+#if defined(COPYQ_AUTOSTART) && defined(COPYQ_DESKTOP_FILE)
     const QString filename = getDesktopFilename();
 
     QFile desktopFile(filename);
@@ -170,7 +179,7 @@ bool X11Platform::isAutostartEnabled()
 
 void X11Platform::setAutostartEnabled(bool enable)
 {
-#ifdef COPYQ_DESKTOP_FILE
+#if defined(COPYQ_AUTOSTART) && defined(COPYQ_DESKTOP_FILE)
     if ( isAutostartEnabled() == enable )
         return;
 
@@ -213,7 +222,7 @@ void X11Platform::setAutostartEnabled(bool enable)
 #ifdef COPYQ_AUTOSTART_COMMAND
     QString cmd = COPYQ_AUTOSTART_COMMAND;
 #else
-    QString cmd = "\"" + QApplication::applicationFilePath() + "\"";
+    QString cmd = "\"" + applicationLaunchPath() + "\"";
 #endif
     const QString sessionName = qApp->property("CopyQ_session_name").toString();
     if ( !sessionName.isEmpty() )
@@ -244,18 +253,24 @@ QCoreApplication *X11Platform::createConsoleApplication(int &argc, char **argv)
 
 QApplication *X11Platform::createServerApplication(int &argc, char **argv)
 {
+#ifdef COPYQ_WITH_X11
     if (X11Info::isPlatformX11())
         old_xio_errhandler = XSetIOErrorHandler(copyq_xio_errhandler);
+#endif
     return new ApplicationExceptionHandler<QApplication>(argc, argv);
-}
-
-QGuiApplication *X11Platform::createMonitorApplication(int &argc, char **argv)
-{
-    return new ApplicationExceptionHandler<QGuiApplication>(argc, argv);
 }
 
 QGuiApplication *X11Platform::createClipboardProviderApplication(int &argc, char **argv)
 {
+    // WORKAROUND: On GNOME Wayland session, run clipboard monitor/provider
+    // processes in XWayland mode, because GNOME does not support the
+    // wlr-data-control protocol required for clipboard access.
+    if ( qEnvironmentVariableIsEmpty("QT_QPA_PLATFORM")
+         && qgetenv("XAUTHORITY").contains("mutter-Xwayland") )
+    {
+        qputenv("QT_QPA_PLATFORM", "xcb");
+    }
+
     return new ApplicationExceptionHandler<QGuiApplication>(argc, argv);
 }
 
@@ -322,15 +337,13 @@ QString X11Platform::translationPrefix()
     return QString();
 }
 
-void sendDummyX11Event()
+qint64 X11Platform::processResidentMemoryBytes(qint64 pid)
 {
-    if (!X11Info::isPlatformX11())
-        return;
-
-    auto display = X11Info::display();
-    auto black = BlackPixel(display, 0);
-    Window window = XCreateSimpleWindow(
-        display, RootWindow(display, 0), -100000, -100000, 1, 1, 0, black, black);
-    XDestroyWindow(display, window);
-    XFlush(display);
+    QFile statm(QStringLiteral("/proc/%1/statm").arg(pid));
+    if (!statm.open(QIODevice::ReadOnly))
+        return -1;
+    const QList<QByteArray> fields = statm.readAll().split(' ');
+    if (fields.size() < 2)
+        return -1;
+    return fields.at(1).toLongLong() * sysconf(_SC_PAGESIZE);
 }

@@ -1,3 +1,5 @@
+.. _backup:
+
 Backup
 ======
 
@@ -16,31 +18,76 @@ To install the command see `the description in the repository
 Back Up Manually
 ----------------
 
-To back up all the data, **exit the application** first and **copy
-the configuration directory**.
+To back up all the data, **exit the application** first and copy
+the configuration, data and state directories.
 
-Path to configuration is usually:
+.. versionchanged:: 17.0.0
+   Tab data and state files were previously stored in the configuration
+   directory. They are migrated automatically on first startup.
 
--  Windows: ``%APPDATA%\copyq``
--  Portable version for Windows: ``config`` sub-folder in unzipped
-   application directory
--  Linux: ``~/.config/copyq``
+Default paths since version 17.0.0:
 
-To copy the configuration path to clipboard from CopyQ:
+.. list-table::
+   :header-rows: 1
 
-1. Open Action dialog (``F5`` shortcut).
-2. Enter the command:
+   * - Platform
+     - Configuration
+     - Data
+     - State
+   * - Linux
+     - ``~/.config/copyq``
+     - ``~/.local/share/copyq``
+     - ``~/.local/state/copyq``
+   * - macOS
+     - ``~/Library/Preferences/copyq``
+     - ``~/Library/Application Support/copyq``
+     - ``~/Library/Application Support/copyq``
+   * - Windows
+     - ``%APPDATA%\copyq``
+     - ``%LOCALAPPDATA%\copyq``
+     - ``%LOCALAPPDATA%\copyq``
+   * - Windows (portable)
+     - ``config``
+     - ``config``
+     - ``config``
+
+Default paths before version 17.0.0:
+
+.. list-table::
+   :header-rows: 1
+
+   * - Platform
+     - Configuration, tab data, state
+     - Item data
+     - Logs
+   * - Linux
+     - ``~/.config/copyq``
+     - ``~/.local/share/copyq/items``
+     - ``~/.local/share/copyq``
+   * - macOS
+     - ``~/Library/Preferences/copyq``
+     - ``~/Library/Application Support/copyq/items``
+     - ``~/Library/Application Support/copyq``
+   * - Windows
+     - ``%APPDATA%\copyq``
+     - ``%APPDATA%\copyq\items``
+     - ``%APPDATA%\copyq``
+   * - Windows (portable)
+     - ``config``
+     - ``config\items``
+     - ``logs``
+
+To copy a directory path to clipboard:
 
 .. code-block:: js
 
     copyq:
-    dir = Dir(info('config') + '/..')
-    copy(dir.absolutePath())
+    copy(Dir(info('config') + '/..').absolutePath())
 
-3. Click OK dialog button.
+Replace ``'config'`` with ``'data'`` or ``'state'`` for the other directories.
 
 To restore the backup, exit the application and replace the
-configuration directory.
+directories.
 
 .. warning::
 
@@ -55,19 +102,21 @@ configuration and commands within the application.
 
 .. warning::
 
-    Tabs are always exported **unencrypted** and if a tab is
-    synchronized with directory on disk the files themselves won't be
-    exported.
+    Exported data is **not encrypted by default**. When exporting from the GUI,
+    CopyQ prompts for an optional export password — if provided, tab data in the
+    export file is encrypted with that password. The ``exportData`` script
+    command does not support this and always exports unencrypted. If a tab is
+    synchronized with a directory on disk, the files themselves are not exported.
 
-To export the data click "Export..." in "File" menu and select what to
-export, confirm with OK button and select file to save the stuff to.
+To export the data click "Export..." in "File" menu, select what to
+export, confirm with OK button and select target file to save.
 
 To restore the data click "Import..." in "File" menu, select file to
 import and select what to import.
 
 .. note::
 
-    Import won't overwrite existing tabs and commands but create new ones.
+    Import will not overwrite existing tabs and commands but create new ones.
 
 Alternatively you can use command line for export and import everything
 (selection dialogs won't be opened).

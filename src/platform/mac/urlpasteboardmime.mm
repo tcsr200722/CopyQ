@@ -1,21 +1,4 @@
-/*
-    Copyright (c) 2020, Lukas Holecek <hluk@email.cz>
-
-    This file is part of CopyQ.
-
-    CopyQ is free software: you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation, either version 3 of the License, or
-    (at your option) any later version.
-
-    CopyQ is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
-
-    You should have received a copy of the GNU General Public License
-    along with CopyQ.  If not, see <http://www.gnu.org/licenses/>.
-*/
+// SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "urlpasteboardmime.h"
 
@@ -25,24 +8,20 @@
 #import <Cocoa/Cocoa.h>
 
 #import <QUrl>
+#import <QVariant>
 
 /*
  * Much of this code is based on the Qt code here:
  *  https://www.qt.gitorious.org/qt/qt/source/src/gui/kernel/qmime_mac.cpp#L765
  */
 
-UrlPasteboardMime::UrlPasteboardMime(const QString &urlUti):
-    QMacPasteboardMime(MIME_ALL)
+UrlPasteboardMime::UrlPasteboardMime(const QString &urlUti)
+    : UrlPasteboardMimeBase()
     , m_urlUti(urlUti)
 {
 }
 
-QString UrlPasteboardMime::convertorName()
-{
-    return "CopyQ-URL-" + m_urlUti;;
-}
-
-QString UrlPasteboardMime::flavorFor(const QString &mime)
+QString UrlPasteboardMime::utiForMime(const QString &mime) const
 {
     if (mime.startsWith(QLatin1String(mimeUriList))) {
         return m_urlUti;
@@ -50,21 +29,14 @@ QString UrlPasteboardMime::flavorFor(const QString &mime)
     return QString();
 }
 
-QString UrlPasteboardMime::mimeFor(QString flav)
+QString UrlPasteboardMime::mimeForUti(const QString &uti) const
 {
-    if (flav == m_urlUti) {
-        return mimeUriList;
-    }
-    return QString();
-}
-bool UrlPasteboardMime::canConvert(const QString &mime, QString flav)
-{
-    return (mime == QLatin1String(mimeUriList) && flav == m_urlUti);;
+    return (uti == m_urlUti) ? mimeUriList : QString();
 }
 
-QVariant UrlPasteboardMime::convertToMime(const QString &mime, QList<QByteArray> data, QString flav)
+QVariant UrlPasteboardMime::convertToMime(const QString &mime, const QList<QByteArray> &data, const QString &uti) const
 {
-    if (!canConvert(mime, flav))
+    if (!canConvert(mime, uti))
         return QVariant();
 
     QList<QVariant> ret;
@@ -87,10 +59,10 @@ QVariant UrlPasteboardMime::convertToMime(const QString &mime, QList<QByteArray>
     return QVariant(ret);
 }
 
-QList<QByteArray> UrlPasteboardMime::convertFromMime(const QString &mime, QVariant data, QString flav)
+QList<QByteArray> UrlPasteboardMime::convertFromMime(const QString &mime, const QVariant &data, const QString &uti) const
 {
     QList<QByteArray> ret;
-    if (!canConvert(mime, flav))
+    if (!canConvert(mime, uti))
         return ret;
 
     QVariantList dataList = data.toList();

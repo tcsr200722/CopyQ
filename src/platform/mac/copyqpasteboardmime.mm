@@ -1,29 +1,14 @@
-/*
-    Copyright (c) 2020, Lukas Holecek <hluk@email.cz>
-
-    This file is part of CopyQ.
-
-    CopyQ is free software: you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation, either version 3 of the License, or
-    (at your option) any later version.
-
-    CopyQ is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
-
-    You should have received a copy of the GNU General Public License
-    along with CopyQ.  If not, see <http://www.gnu.org/licenses/>.
-*/
+// SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "copyqpasteboardmime.h"
+#include "cfref.h"
 
 #include "common/log.h"
 #include "common/mimetypes.h"
 
 #include <QClipboard>
 #include <QEvent>
+#include <QVariant>
 
 #import <CoreServices/CoreServices.h>
 
@@ -52,7 +37,7 @@ namespace {
     }
 
     CFStringRef mimeToUTI(CFStringRef mime) {
-        return UTTypeCreatePreferredIdentifierForTag(kUTTagClassMIMEType, mime, NULL);
+        return UTTypeCreatePreferredIdentifierForTag(kUTTagClassMIMEType, mime, nullptr);
     }
 
     CFStringRef utiToMime(CFStringRef uti) {
@@ -61,23 +46,16 @@ namespace {
 
     QString convertUtiOrMime(const QString &in, CFStringRef (*convert)(CFStringRef)) {
         NSString *inString = in.toNSString();
-        CFStringRef outRef = convert((__bridge CFStringRef)inString);
+        CFRef<CFStringRef> outRef = convert((__bridge CFStringRef)inString);
         QString out;
-        if (outRef) {
-            out = QString::fromNSString((__bridge NSString *)outRef);
-            CFRelease(outRef);
-        }
+        if (outRef)
+            out = QString::fromNSString((__bridge NSString *)outRef.get());
         return out;
     }
 
 }
 
-QString CopyQPasteboardMime::convertorName()
-{
-    return QLatin1String("CopyQ");
-}
-
-QString CopyQPasteboardMime::flavorFor(const QString &mime)
+QString CopyQPasteboardMime::utiForMime(const QString &mime) const
 {
     if (shouldIgnoreMime(mime)) {
         return QString();
@@ -95,7 +73,7 @@ QString CopyQPasteboardMime::flavorFor(const QString &mime)
     return QString();
 }
 
-QString CopyQPasteboardMime::mimeFor(QString uti)
+QString CopyQPasteboardMime::mimeForUti(const QString &uti) const
 {
     if (shouldIgnoreUTI(uti)) {
         return QString();
@@ -114,32 +92,8 @@ QString CopyQPasteboardMime::mimeFor(QString uti)
     return COPYQ_MIME_PREFIX + uti;
 }
 
-bool CopyQPasteboardMime::canConvert(const QString &mime, QString uti)
-{
-    if (uti.isEmpty() || mime.isEmpty())
-        return false;
 
-    // Allow to set UTI directly in QMimeData.
-    if (mime == uti)
-        return true;
-
-    if (shouldIgnoreMime(mime))
-        return false;
-
-    if (shouldIgnoreUTI(uti))
-        return false;
-
-    QString convMime = convertUtiOrMime(uti, utiToMime);
-
-    if (convMime != mime) {
-        COPYQ_LOG(QString("Can't convert between %1 and %2").arg(uti).arg(mime));
-    }
-
-    return (convMime == mime);
-}
-
-
-QVariant CopyQPasteboardMime::convertToMime(const QString &mime, QList<QByteArray> data, QString uti)
+QVariant CopyQPasteboardMime::convertToMime(const QString &mime, const QList<QByteArray> &data, const QString &uti) const
 {
     if (!canConvert(mime, uti)) {
         return QVariant();
@@ -156,20 +110,19 @@ QVariant CopyQPasteboardMime::convertToMime(const QString &mime, QList<QByteArra
     }
 }
 
-QList<QByteArray> CopyQPasteboardMime::convertFromMime(const QString &mime, QVariant variant,
-                                                          QString uti)
+QList<QByteArray> CopyQPasteboardMime::convertFromMime(const QString &mime, const QVariant &data, const QString &uti) const
 {
     if (!canConvert(mime, uti)) {
         return QList<QByteArray>();
     }
 
     QList<QByteArray> ret;
-    if (variant.userType() == QMetaType::QByteArray) {
+    if (data.userType() == QMetaType::QByteArray) {
         // Was a single item
-        ret << variant.toByteArray();
+        ret << data.toByteArray();
     } else {
         // Was a list or null
-        QVariantList inp = variant.toList();
+        QVariantList inp = data.toList();
         foreach(const QVariant &item, inp) {
             ret << item.toByteArray();
         }
